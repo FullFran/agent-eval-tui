@@ -212,7 +212,7 @@ func TestReceiverPersistsProtobufAndJSON(t *testing.T) {
 	}
 	t.Cleanup(func() { store.Close() })
 
-	srv := httptest.NewServer(otlp.NewReceiver(store, nil).Handler())
+	srv := httptest.NewServer(otlp.NewReceiver(store, nil, nil).Handler())
 	t.Cleanup(srv.Close)
 
 	pb, err := proto.Marshal(agentExport())
@@ -342,7 +342,7 @@ func TestReceiverAcceptsHexEncodedJSONIDs(t *testing.T) {
 	}
 	t.Cleanup(func() { store.Close() })
 
-	srv := httptest.NewServer(otlp.NewReceiver(store, nil).Handler())
+	srv := httptest.NewServer(otlp.NewReceiver(store, nil, nil).Handler())
 	t.Cleanup(srv.Close)
 
 	if resp := postExport(t, srv, []byte(payload), "application/json"); resp.StatusCode != http.StatusOK {

@@ -93,6 +93,7 @@ func translateSpan(s *tracepb.Span, serviceName string) domain.Span {
 		val := kv.GetValue()
 		span.Attributes[key] = anyValueNative(val)
 		applyGenAI(&span, key, val)
+		applyUsage(&span, key, val)
 	}
 
 	return span
@@ -263,4 +264,32 @@ func allZero(b []byte) bool {
 		}
 	}
 	return true
+}
+
+// applyUsage collects every `gen_ai.usage.*` counter into the usage map.
+//
+// Deliberately prefix-matched rather than enumerated. The conventions
+// standardise input and output tokens, but providers already bill for cached
+// input, reasoning and audio tokens under names that are not settled yet.
+// Enumerating would mean a new counter is invisible until this file is edited,
+// and invisible usage is a wrong cost.
+func applyUsage(span *domain.Span, key string, val *commonpb.AnyValue) {
+	if !strings.HasPrefix(key, domain.AttrUsagePrefix) {
+		return
+	}
+	name := strings.TrimPrefix(key, domain.AttrUsagePrefix)
+	if name == "" {
+		return
+	}
+	n := anyValueInt(val)
+	if n == 0 {
+		return
+	}
+	if span.Usage == nil {
+		span.Usage = map[string]int64{}
+	}
+	// Stored verbatim after the prefix: "input_tokens", "output_tokens",
+	// "cache_read_input_tokens". No trimming, so what the agent emitted is what
+	// the pricing table has to name, and nobody has to guess a transformation.
+	span.Usage[name] = n
 }

@@ -23,6 +23,7 @@ import (
 
 	"github.com/FullFran/agent-eval-tui/internal/domain"
 	"github.com/FullFran/agent-eval-tui/internal/ingest/otlp"
+	"github.com/FullFran/agent-eval-tui/internal/pricing"
 	"github.com/FullFran/agent-eval-tui/internal/store/sqlite"
 )
 
@@ -48,6 +49,8 @@ func run(args []string) error {
 		return listTraces(args[1:])
 	case "trace":
 		return showTrace(args[1:])
+	case "sessions":
+		return listSessions(args[1:])
 	case "-h", "--help", "help":
 		usage()
 		return nil
@@ -60,9 +63,10 @@ func run(args []string) error {
 func usage() {
 	fmt.Fprint(os.Stderr, `agent-eval — agent telemetry over OTLP, in one binary and one SQLite file
 
-  agent-eval serve  [-addr :4318] [-db agent-eval.db] [-debug]
+  agent-eval serve  [-addr :4318] [-db agent-eval.db] [-pricing prices.json] [-debug]
   agent-eval traces [-db agent-eval.db] [-limit 20]
   agent-eval trace  <trace-id> [-db agent-eval.db]
+  agent-eval sessions [-db agent-eval.db] [-limit 20]
 
 Point any OpenTelemetry exporter at it:
   OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:4318
@@ -74,6 +78,7 @@ func serve(args []string) error {
 	addr := fs.String("addr", ":4318", "listen address for OTLP/HTTP")
 	dbPath := fs.String("db", defaultDB, "path to the SQLite database")
 	debug := fs.Bool("debug", false, "log every stored batch")
+	pricingPath := fs.String("pricing", "", "optional JSON overrides for negotiated rates; public prices are already embedded")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -93,7 +98,13 @@ func serve(args []string) error {
 	}
 	defer store.Close()
 
-	receiver := otlp.NewReceiver(store, logger)
+	table, err := pricing.Load(*pricingPath)
+	if err != nil {
+		return err
+	}
+	logger.Info("pricing", "models", table.Models(), "overrides", table.Overrides())
+
+	receiver := otlp.NewReceiver(store, table, logger)
 	server := &http.Server{
 		Addr:              *addr,
 		Handler:           receiver.Handler(),
@@ -145,19 +156,62 @@ func listTraces(args []string) error {
 		return nil
 	}
 
-	fmt.Printf("%-34s %-22s %9s %5s %5s %5s %9s %s\n",
-		"TRACE", "ROOT", "DURATION", "SPANS", "LLM", "TOOL", "TOKENS", "STATUS")
+	fmt.Printf("%-34s %-20s %9s %5s %5s %5s %9s %10s %s\n",
+		"TRACE", "ROOT", "DURATION", "SPANS", "LLM", "TOOL", "TOKENS", "COST", "STATUS")
 	for _, t := range traces {
 		status := "ok"
 		if t.Failed() {
 			status = fmt.Sprintf("%d error(s)", t.ErrorCount)
 		}
-		fmt.Printf("%-34s %-22s %9s %5d %5d %5d %9d %s\n",
-			t.TraceID, truncate(rootLabel(t), 22), t.Duration().Round(time.Millisecond),
+		fmt.Printf("%-34s %-20s %9s %5d %5d %5d %9d %10s %s\n",
+			t.TraceID, truncate(rootLabel(t), 20), t.Duration().Round(time.Millisecond),
 			t.SpanCount, t.LLMCalls, t.ToolCalls,
-			t.InputTokens+t.OutputTokens, status)
+			t.InputTokens+t.OutputTokens, money(t.Cost, t.Priced), status)
 	}
 	return nil
+}
+
+func listSessions(args []string) error {
+	fs := flag.NewFlagSet("sessions", flag.ExitOnError)
+	dbPath := fs.String("db", defaultDB, "path to the SQLite database")
+	limit := fs.Int("limit", 20, "how many sessions to show")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+
+	ctx := context.Background()
+	store, err := sqlite.Open(ctx, *dbPath)
+	if err != nil {
+		return err
+	}
+	defer store.Close()
+
+	sessions, err := store.Sessions(ctx, *limit)
+	if err != nil {
+		return err
+	}
+	if len(sessions) == 0 {
+		fmt.Println("no sessions yet — sessions come from gen_ai.conversation.id, which the agent must set")
+		return nil
+	}
+
+	fmt.Printf("%-32s %7s %6s %7s %9s %10s\n",
+		"SESSION", "TRACES", "SPANS", "ERRORS", "TOKENS", "COST")
+	for _, s := range sessions {
+		fmt.Printf("%-32s %7d %6d %7d %9d %10s\n",
+			truncate(s.SessionID, 32), s.Traces, s.Spans, s.Errors,
+			s.InputTokens+s.OutputTokens, money(s.Cost, s.Priced))
+	}
+	return nil
+}
+
+// money renders a cost, keeping "not priced" visibly different from "free".
+// A dash is the honest answer when no pricing table covered the model.
+func money(cost float64, priced bool) string {
+	if !priced {
+		return "-"
+	}
+	return fmt.Sprintf("$%.4f", cost)
 }
 
 func showTrace(args []string) error {

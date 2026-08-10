@@ -36,18 +36,46 @@ type SpanSink interface {
 	SaveSpans(ctx context.Context, spans []domain.Span) error
 }
 
+// Pricer turns a model and its usage into money. Optional: with no pricing
+// table the tool still records everything and reports cost as unknown.
+type Pricer interface {
+	Cost(model string, usage map[string]int64) (float64, bool)
+}
+
 // Receiver serves the OTLP/HTTP trace endpoint.
 type Receiver struct {
 	sink   SpanSink
+	pricer Pricer
 	logger *slog.Logger
 }
 
-// NewReceiver builds a receiver writing into sink.
-func NewReceiver(sink SpanSink, logger *slog.Logger) *Receiver {
+// NewReceiver builds a receiver writing into sink. pricer may be nil.
+func NewReceiver(sink SpanSink, pricer Pricer, logger *slog.Logger) *Receiver {
 	if logger == nil {
 		logger = slog.Default()
 	}
-	return &Receiver{sink: sink, logger: logger}
+	return &Receiver{sink: sink, pricer: pricer, logger: logger}
+}
+
+// price fills in cost at ingest time rather than at read time.
+//
+// Prices change, and a trace should be worth what it cost when it ran, not what
+// the same tokens would cost today. Re-pricing history on every read would make
+// yesterday's comparison move under you.
+func (r *Receiver) price(spans []domain.Span) {
+	if r.pricer == nil {
+		return
+	}
+	for i := range spans {
+		model := spans[i].Model()
+		if model == "" || len(spans[i].Usage) == 0 {
+			continue
+		}
+		if cost, ok := r.pricer.Cost(model, spans[i].Usage); ok {
+			spans[i].Cost = cost
+			spans[i].Priced = true
+		}
+	}
 }
 
 // Handler returns the HTTP routes.
@@ -102,6 +130,7 @@ func (r *Receiver) handleTraces(w http.ResponseWriter, req *http.Request) {
 		writeSuccess(w)
 		return
 	}
+	r.price(spans)
 
 	// Not req.Context(): an exporter that hangs up mid-write would otherwise
 	// cancel the transaction and lose a batch that arrived intact.
