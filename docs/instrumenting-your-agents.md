@@ -395,3 +395,75 @@ are missing. Go back to section 2.
 5. **Content is opt-in.** Turn it on where personal data is acceptable, and not
    elsewhere.
 6. **Flush on SIGTERM,** or every rolling restart eats the traces you most want.
+
+---
+
+## Turning traces into an experiment
+
+Everything above gives you observability. Two more attributes turn it into
+evaluation:
+
+```ts
+span.setAttribute('agent_eval.case', 'resumen-factura');   // the task
+span.setAttribute('agent_eval.variant', 'haiku-4-5');      // what is under test
+```
+
+There is no SDK and nothing to register. **A trace already is one execution**,
+so a trace tagged with a case and a variant is one observation. Run the case
+thirty times per variant and ask:
+
+```bash
+agent-eval compare resumen-factura -metric latency
+agent-eval compare resumen-factura -metric success
+agent-eval compare resumen-factura -metric cost
+```
+
+The variant is whatever you are actually changing: a model, a prompt version, an
+agent revision, a retrieval strategy. Keep everything else fixed, or the
+difference you measure belongs to something you did not mean to test.
+
+```mermaid
+flowchart LR
+    subgraph A["variant: sonnet-4-5"]
+        A1["run 1"]
+        A2["run 2"]
+        A3["…30"]
+    end
+    subgraph B["variant: haiku-4-5"]
+        B1["run 1"]
+        B2["run 2"]
+        B3["…30"]
+    end
+
+    A --> C{{"Welch's t<br/>difference ± interval"}}
+    B --> C
+    C --> V["real, or<br/>indistinguishable from noise"]
+
+    style A fill:#0f3460,stroke:#1a1a2e,color:#eaeaea
+    style B fill:#533483,stroke:#1a1a2e,color:#eaeaea
+    style C fill:#e94560,stroke:#1a1a2e,color:#fff
+    style V fill:#00b894,stroke:#1a1a2e,color:#fff
+```
+
+### How many runs
+
+There is no universal answer, and anyone who gives you one is guessing. The
+honest procedure is to run some, look at the interval, and keep going until it
+is narrower than the difference you care about.
+
+As a starting point: **thirty per variant resolves a latency difference of
+roughly half a second** on the kind of spread agents actually show, and **does
+not resolve a three-point difference in success rate.** If you need the second,
+you need hundreds of runs — and knowing that before you start is worth more than
+any chart.
+
+### A warning about `success`
+
+Right now `success` means "no span in the trace reported an error". That catches
+a crash or a failed tool call and completely misses **a confidently wrong
+answer**, which is the failure mode that matters most with an LLM.
+
+Treat it as a smoke detector, not a grade, until real scorers land
+([#5](https://github.com/FullFran/agent-eval-tui/issues/5)). If you need a
+verdict today, have the agent set the span status to error when its own
+assertion fails — a programmatic check you write is worth more than any judge.

@@ -127,6 +127,10 @@ func applyGenAI(span *domain.Span, key string, val *commonpb.AnyValue) {
 		span.AgentName = anyValueString(val)
 	case domain.AttrToolName:
 		span.ToolName = anyValueString(val)
+	case domain.AttrCase:
+		span.CaseID = anyValueString(val)
+	case domain.AttrVariant:
+		span.Variant = anyValueString(val)
 	case domain.AttrSystemInstructions:
 		span.Content.SystemInstructions = anyValueString(val)
 	case domain.AttrInputMessages:

@@ -44,6 +44,11 @@ CREATE TABLE IF NOT EXISTS spans (
     -- missing pricing entry reads as a free model.
     priced          INTEGER NOT NULL DEFAULT 0,
 
+    -- Set by the agent via agent_eval.case / agent_eval.variant. Empty for
+    -- ordinary production traffic, which is most of it.
+    case_id         TEXT NOT NULL DEFAULT '',
+    variant         TEXT NOT NULL DEFAULT '',
+
     is_llm_call     INTEGER NOT NULL DEFAULT 0,
     is_tool_call    INTEGER NOT NULL DEFAULT 0,
 
@@ -106,8 +111,16 @@ CREATE TABLE IF NOT EXISTS traces (
     -- and without this they are unrelated rows.
     session_id      TEXT NOT NULL DEFAULT '',
 
+    -- A trace tagged with a case and a variant is one observation in an
+    -- experiment. No separate Run entity: a trace already is one execution.
+    case_id         TEXT NOT NULL DEFAULT '',
+    variant         TEXT NOT NULL DEFAULT '',
+
     updated_at      INTEGER NOT NULL
 );
+
+CREATE INDEX IF NOT EXISTS idx_traces_case ON traces (case_id, variant)
+    WHERE case_id <> '';
 
 CREATE INDEX IF NOT EXISTS idx_traces_session ON traces (session_id, start_unix_nano)
     WHERE session_id <> '';

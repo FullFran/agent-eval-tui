@@ -214,6 +214,72 @@ on top rather than replacing:
 
 ---
 
+## Answering "is B actually better?"
+
+Tag the agent's spans with a case and a variant — two attributes, no SDK:
+
+```ts
+span.setAttribute('agent_eval.case', 'resumen-factura');
+span.setAttribute('agent_eval.variant', 'haiku-4-5');
+```
+
+Run the case thirty times per variant, then ask:
+
+```bash
+agent-eval compare resumen-factura -metric latency
+```
+
+```
+case resumen-factura   metric latency   95% confidence
+
+VARIANT                      N         MEAN       INTERVAL
+haiku-4-5                   30        1.90s        ± 161ms
+sonnet-4-5                  30        4.56s        ± 194ms
+
+sonnet-4-5 − haiku-4-5 = +2.66s ± 247ms   (n=60, df=56.1)
+  the difference is real at 95% confidence
+```
+
+Now the same data, asking about success instead:
+
+```
+VARIANT                      N         MEAN       INTERVAL
+haiku-4-5                   30        83.3%      ± 14.2 pp
+sonnet-4-5                  30        80.0%      ± 15.2 pp
+
+sonnet-4-5 − haiku-4-5 = -3.3% ± 20.3 pp   (n=60, df=57.7)
+  the interval includes zero: at 95% confidence this is indistinguishable from noise
+```
+
+**83.3% against 80.0% is not a result.** Every other tool would have drawn that
+bar chart and let you ship the wrong model. Thirty runs per arm is not enough to
+resolve three percentage points, and the tool says so instead of pretending.
+
+Metrics: `latency`, `cost`, `tokens`, `success`. `agent-eval cases` lists what
+has runs.
+
+### What the arithmetic does, and why
+
+- **Welch's t-test**, not Student's pooled test. Pooling assumes both arms share
+  a variance, and two models routinely differ in how *consistent* they are, not
+  just in their average. The price of that assumption is an interval that is too
+  narrow — the failure mode that matters.
+- **Variance divides by n−1.** Dividing by n understates the spread, which is
+  exactly the error that makes a difference look more real than it is.
+- **The t distribution, not the normal.** The variance is estimated from the
+  same small sample; at n = 10 the difference is about 15% of the margin.
+- **An unpriced run is skipped, not counted as $0.** Averaging in a zero for
+  "we do not know what this cost" drags the mean toward free.
+- **Three or more variants report no comparison.** Pairwise tests across many
+  arms multiply the chance of finding a difference that is not there, and
+  correcting for that honestly is a bigger decision than a CLI flag.
+
+The Student t quantile is hand-written rather than pulled from a numerical
+library, and the tests check it against nine published table values — a wrong
+quantile would silently narrow every interval the tool prints.
+
+---
+
 ## Using it
 
 ```bash
@@ -222,6 +288,8 @@ agent-eval serve           # receive OTLP on :4318
 agent-eval traces          # list recent traces
 agent-eval trace <id>      # one trace as a span tree
 agent-eval sessions        # multi-turn sessions
+agent-eval cases           # cases that have runs
+agent-eval compare <case>  # is one variant actually better?
 ```
 
 Everything reads the same database. `-db <path>` or `AGENT_EVAL_DB` overrides it
@@ -376,11 +444,15 @@ mapped, cost from LiteLLM, sessions, SQLite, a TUI and a CLI. CI vets,
 race-tests, builds the static binary and drives it end to end with a real OTLP
 payload.
 
-**Evaluation does not exist yet.** `Case`, `Run` and `Judgement` are open in
-[#1](https://github.com/FullFran/agent-eval-tui/issues/1); repeated sampling in
-[#3](https://github.com/FullFran/agent-eval-tui/issues/3). Today this answers
-*"what did the agent do"*. It does not yet answer *"is B actually worse than
-A"*, which is the question the repository exists for.
+**Repeated sampling works.** Tag spans with `agent_eval.case` and
+`agent_eval.variant`, and `agent-eval compare` answers *"is B actually better?"*
+with a confidence interval and a stated verdict rather than two bare numbers.
+
+**Scoring does not exist yet.** Success is currently "no span errored", which is
+a crude proxy: it catches a crash and misses a confidently wrong answer. The
+scorer ladder — programmatic assertion, then match, then a validated LLM judge —
+is open in [#5](https://github.com/FullFran/agent-eval-tui/issues/5), and
+trajectory metrics in [#4](https://github.com/FullFran/agent-eval-tui/issues/4).
 
 Three bugs found while building it, all worth knowing if you write an OTLP
 receiver of your own:
