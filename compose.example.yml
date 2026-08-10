@@ -1,0 +1,44 @@
+# Running agent-eval next to an agent.
+#
+# Nothing is installed into the agent. It already speaks OpenTelemetry, so the
+# only change is where its exporter points — one environment variable.
+#
+#   docker compose -f compose.example.yml up -d
+
+services:
+  agent-eval:
+    build: .
+    # Deliberately NOT published to the host. The collector is reachable from
+    # the compose network by service name; exposing an unauthenticated ingest
+    # endpoint on a public interface would let anyone write into the database.
+    expose:
+      - '4318'
+    volumes:
+      - agent-eval-data:/data
+    restart: unless-stopped
+
+  # Your agent. Replace the image; keep the environment.
+  agent:
+    image: your-agent:latest
+    environment:
+      # The SDK appends /v1/traces to this.
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://agent-eval:4318
+
+      # Required until gRPC lands (#8). Several SDKs default to gRPC on :4317,
+      # and without this they fail to connect to an HTTP-only collector — which
+      # reads as "the tool is broken" rather than "wrong transport".
+      OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf
+
+      # Names the service in every trace. Without it traces arrive as
+      # "unknown_service" and stop being attributable once you run two agents.
+      OTEL_SERVICE_NAME: hagabox
+
+      # Content recording is opt-in in the GenAI conventions because prompts and
+      # completions can carry personal data. Turn it on only where that is
+      # acceptable; the metrics work fine without it.
+      # OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT: 'true'
+    depends_on:
+      - agent-eval
+
+volumes:
+  agent-eval-data:

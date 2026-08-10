@@ -148,12 +148,38 @@ Every attribute is also kept as raw JSON. The conventions are still moving; when
 they move again, a new column can be backfilled from stored data instead of
 asking everyone to re-run their agents.
 
-## Deployment
+## Deploying it next to your agents
 
-`CGO_ENABLED=0` produces a static binary, because `modernc.org/sqlite` is a
-pure-Go SQLite. That is the whole deployment story: copy one file next to
-whatever is running your agents, give it a path for the database, done. No
-collector, no Postgres, no Docker required.
+**Nothing is installed into the agent.** It already speaks OpenTelemetry, so the
+only change is where its exporter points — one environment variable:
+
+```bash
+OTEL_EXPORTER_OTLP_ENDPOINT=http://agent-eval:4318
+OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
+OTEL_SERVICE_NAME=your-agent
+```
+
+`OTEL_EXPORTER_OTLP_PROTOCOL` is required until gRPC lands (#8): several SDKs
+default to gRPC on :4317 and will fail to connect to an HTTP-only collector,
+which reads as "this tool is broken" rather than "wrong transport".
+
+Three ways to run it, in order of how little they ask of you:
+
+| | |
+|---|---|
+| **A binary** | `CGO_ENABLED=0 go build` gives one static file. Copy it, give it a database path, done. No runtime, no libc |
+| **A container** | 23 MB, `FROM scratch`, non-root. See `compose.example.yml` for the sidecar shape |
+| **A sidecar in your existing stack** | Add the service to the compose file your agent already uses and point the agent at it by service name |
+
+Do not publish :4318 on a public interface. Ingest is unauthenticated, so
+anything that can reach it can write into your database. Keep it on the internal
+network — `expose`, not `ports`.
+
+One trap worth knowing if you copy the Dockerfile: `scratch` has no shell, so
+`/data` must be created **at build time with the runtime uid as its owner**.
+Docker seeds a named volume from the image's directory including its ownership,
+and getting it wrong produces `apply schema: unable to open database file`,
+which reads like a SQLite problem and is a permissions one.
 
 ## Status
 
