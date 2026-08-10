@@ -93,6 +93,7 @@ func (s *Store) SaveSpans(ctx context.Context, spans []domain.Span) error {
 			span.InputTokens, span.OutputTokens, span.FinishReasons,
 			span.ConversationID, span.AgentName, span.ToolName,
 			marshalUsage(span.Usage), span.Cost, boolToInt(span.Priced),
+			span.CaseID, span.Variant,
 			boolToInt(span.IsLLMCall()), boolToInt(span.IsToolCall()),
 			string(attrs), now,
 		); err != nil {
@@ -152,7 +153,8 @@ func refreshTrace(ctx context.Context, tx *sql.Tx, traceID string, now int64) er
 		t.StartTime.UnixNano(), traceEndNano(t), t.Duration().Nanoseconds(),
 		t.SpanCount, t.ErrorCount, t.LLMCalls, t.ToolCalls,
 		t.InputTokens, t.OutputTokens,
-		marshalUsage(t.Usage), t.Cost, boolToInt(t.Priced), t.SessionID, now,
+		marshalUsage(t.Usage), t.Cost, boolToInt(t.Priced),
+		t.SessionID, t.CaseID, t.Variant, now,
 	)
 	if err != nil {
 		return fmt.Errorf("upsert trace %s: %w", traceID, err)
@@ -184,7 +186,7 @@ func (s *Store) RecentTraces(ctx context.Context, limit int) ([]domain.Trace, er
 			&t.TraceID, &t.ServiceName, &t.RootSpanID, &t.RootName, &t.AgentName,
 			&startNS, &endNS, &t.SpanCount, &t.ErrorCount, &t.LLMCalls,
 			&t.ToolCalls, &t.InputTokens, &t.OutputTokens,
-			&usageJSON, &t.Cost, &priced, &t.SessionID,
+			&usageJSON, &t.Cost, &priced, &t.SessionID, &t.CaseID, &t.Variant,
 		); err != nil {
 			return nil, fmt.Errorf("scan trace: %w", err)
 		}
@@ -274,6 +276,7 @@ func scanSpan(rows *sql.Rows) (domain.Span, error) {
 		&span.InputTokens, &span.OutputTokens, &span.Operation,
 		&span.AgentName, &span.ToolName,
 		&usageJSON, &span.Cost, &priced, &span.ConversationID,
+		&span.CaseID, &span.Variant,
 	); err != nil {
 		return domain.Span{}, err
 	}
@@ -359,6 +362,83 @@ func (s *Store) Sessions(ctx context.Context, limit int) ([]Session, error) {
 			sess.EndTime = time.Unix(0, endNS).UTC()
 		}
 		out = append(out, sess)
+	}
+	return out, rows.Err()
+}
+
+// Observation is one run of a case: one trace, reduced to the numbers an
+// experiment compares.
+type Observation struct {
+	Variant  string
+	Duration time.Duration
+	Cost     float64
+	Priced   bool
+	Tokens   int64
+	Success  float64 // 1 when the trace had no error span, else 0
+}
+
+// CaseSummary is what is known about a case without opening it.
+type CaseSummary struct {
+	CaseID    string
+	Runs      int
+	Variants  int
+	Succeeded int
+	StartTime time.Time
+	EndTime   time.Time
+}
+
+// Cases lists the cases that have observations, most recent first.
+func (s *Store) Cases(ctx context.Context, limit int) ([]CaseSummary, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+	rows, err := s.db.QueryContext(ctx, selectCases, limit)
+	if err != nil {
+		return nil, fmt.Errorf("query cases: %w", err)
+	}
+	defer rows.Close()
+
+	var out []CaseSummary
+	for rows.Next() {
+		var (
+			c              CaseSummary
+			startNS, endNS int64
+		)
+		if err := rows.Scan(&c.CaseID, &c.Runs, &c.Variants, &c.Succeeded, &startNS, &endNS); err != nil {
+			return nil, fmt.Errorf("scan case: %w", err)
+		}
+		if startNS > 0 {
+			c.StartTime = time.Unix(0, startNS).UTC()
+		}
+		if endNS > 0 {
+			c.EndTime = time.Unix(0, endNS).UTC()
+		}
+		out = append(out, c)
+	}
+	return out, rows.Err()
+}
+
+// CaseObservations returns every run recorded for a case.
+func (s *Store) CaseObservations(ctx context.Context, caseID string) ([]Observation, error) {
+	rows, err := s.db.QueryContext(ctx, selectCaseObservations, caseID)
+	if err != nil {
+		return nil, fmt.Errorf("query observations of %s: %w", caseID, err)
+	}
+	defer rows.Close()
+
+	var out []Observation
+	for rows.Next() {
+		var (
+			o          Observation
+			durationNS int64
+			priced     int
+		)
+		if err := rows.Scan(&o.Variant, &durationNS, &o.Cost, &priced, &o.Tokens, &o.Success); err != nil {
+			return nil, fmt.Errorf("scan observation: %w", err)
+		}
+		o.Duration = time.Duration(durationNS)
+		o.Priced = priced == 1
+		out = append(out, o)
 	}
 	return out, rows.Err()
 }

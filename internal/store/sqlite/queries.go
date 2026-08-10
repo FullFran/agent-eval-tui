@@ -13,6 +13,7 @@ INSERT INTO spans (
     input_tokens, output_tokens, finish_reasons,
     conversation_id, agent_name, tool_name,
     usage_json, cost_usd, priced,
+    case_id, variant,
     is_llm_call, is_tool_call,
     attributes, received_at
 ) VALUES (
@@ -24,6 +25,7 @@ INSERT INTO spans (
     ?, ?, ?,
     ?, ?, ?,
     ?, ?, ?,
+    ?, ?,
     ?, ?,
     ?, ?
 )
@@ -51,6 +53,8 @@ ON CONFLICT(span_id) DO UPDATE SET
     usage_json      = excluded.usage_json,
     cost_usd        = excluded.cost_usd,
     priced          = excluded.priced,
+    case_id         = excluded.case_id,
+    variant         = excluded.variant,
     is_llm_call     = excluded.is_llm_call,
     is_tool_call    = excluded.is_tool_call,
     attributes      = excluded.attributes,
@@ -75,7 +79,8 @@ const selectSpansForRollup = `
 SELECT span_id, trace_id, parent_span_id, service_name, name,
        start_unix_nano, end_unix_nano, status_code, request_model,
        response_model, input_tokens, output_tokens, operation,
-       agent_name, tool_name, usage_json, cost_usd, priced, conversation_id
+       agent_name, tool_name, usage_json, cost_usd, priced, conversation_id,
+       case_id, variant
 FROM spans
 WHERE trace_id = ?
 ORDER BY start_unix_nano ASC
@@ -87,8 +92,8 @@ INSERT INTO traces (
     start_unix_nano, end_unix_nano, duration_ns,
     span_count, error_count, llm_calls, tool_calls,
     input_tokens, output_tokens, usage_json, cost_usd, priced,
-    session_id, updated_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    session_id, case_id, variant, updated_at
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(trace_id) DO UPDATE SET
     service_name    = excluded.service_name,
     root_span_id    = excluded.root_span_id,
@@ -107,6 +112,8 @@ ON CONFLICT(trace_id) DO UPDATE SET
     cost_usd        = excluded.cost_usd,
     priced          = excluded.priced,
     session_id      = excluded.session_id,
+    case_id         = excluded.case_id,
+    variant         = excluded.variant,
     updated_at      = excluded.updated_at
 `
 
@@ -114,7 +121,7 @@ const selectRecentTraces = `
 SELECT trace_id, service_name, root_span_id, root_name, agent_name,
        start_unix_nano, end_unix_nano, span_count, error_count,
        llm_calls, tool_calls, input_tokens, output_tokens,
-       usage_json, cost_usd, priced, session_id
+       usage_json, cost_usd, priced, session_id, case_id, variant
 FROM traces
 ORDER BY start_unix_nano DESC
 LIMIT ?
@@ -134,6 +141,36 @@ SELECT session_id,
 FROM traces
 WHERE session_id <> ''
 GROUP BY session_id
+ORDER BY started DESC
+LIMIT ?
+`
+
+// Observations for one case: one row per trace, which is one run.
+//
+// duration_ns and cost come straight off the rollup; success is the inverse of
+// error_count so a 0/1 sample can be averaged into a success rate.
+const selectCaseObservations = `
+SELECT variant,
+       duration_ns,
+       cost_usd,
+       priced,
+       input_tokens + output_tokens AS tokens,
+       CASE WHEN error_count = 0 THEN 1.0 ELSE 0.0 END AS success
+FROM traces
+WHERE case_id = ?
+ORDER BY start_unix_nano ASC
+`
+
+const selectCases = `
+SELECT case_id,
+       COUNT(*)                        AS runs,
+       COUNT(DISTINCT variant)         AS variants,
+       SUM(CASE WHEN error_count = 0 THEN 1 ELSE 0 END) AS succeeded,
+       MIN(start_unix_nano)            AS started,
+       MAX(end_unix_nano)              AS ended
+FROM traces
+WHERE case_id <> ''
+GROUP BY case_id
 ORDER BY started DESC
 LIMIT ?
 `

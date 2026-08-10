@@ -25,6 +25,7 @@ import (
 
 	"github.com/FullFran/agent-eval-tui/internal/config"
 	"github.com/FullFran/agent-eval-tui/internal/domain"
+	"github.com/FullFran/agent-eval-tui/internal/experiment"
 	"github.com/FullFran/agent-eval-tui/internal/ingest/otlp"
 	"github.com/FullFran/agent-eval-tui/internal/pricing"
 	"github.com/FullFran/agent-eval-tui/internal/store/sqlite"
@@ -60,6 +61,10 @@ func run(args []string) error {
 		return showTrace(args[1:])
 	case "sessions":
 		return listSessions(args[1:])
+	case "cases":
+		return listCases(args[1:])
+	case "compare":
+		return compareCase(args[1:])
 	case "-h", "--help", "help":
 		usage()
 		return nil
@@ -78,6 +83,9 @@ func usage() {
   agent-eval traces          list recent traces
   agent-eval trace <id>      print one trace as a span tree
   agent-eval sessions        list multi-turn sessions
+
+  agent-eval cases           list cases that have runs
+  agent-eval compare <case>  is one variant actually better? [-metric latency|cost|tokens|success]
 
 Flags: -db <path>  -limit <n>  -addr <host:port>  -pricing <overrides.json>  -debug
 
@@ -398,4 +406,109 @@ func orDash(s string) string {
 		return "-"
 	}
 	return s
+}
+
+func listCases(args []string) error {
+	fs := flag.NewFlagSet("cases", flag.ExitOnError)
+	dbPath := fs.String("db", defaultDB(), "path to the SQLite database")
+	limit := fs.Int("limit", 20, "how many cases to show")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+
+	ctx := context.Background()
+	store, err := sqlite.Open(ctx, *dbPath)
+	if err != nil {
+		return err
+	}
+	defer store.Close()
+
+	cases, err := store.Cases(ctx, *limit)
+	if err != nil {
+		return err
+	}
+	if len(cases) == 0 {
+		fmt.Println("no cases yet — tag the agent's spans with agent_eval.case")
+		fmt.Println("and agent_eval.variant, then run the same case several times.")
+		return nil
+	}
+
+	fmt.Printf("%-30s %6s %9s %9s\n", "CASE", "RUNS", "VARIANTS", "SUCCESS")
+	for _, c := range cases {
+		rate := "-"
+		if c.Runs > 0 {
+			rate = fmt.Sprintf("%.0f%%", 100*float64(c.Succeeded)/float64(c.Runs))
+		}
+		fmt.Printf("%-30s %6d %9d %9s\n", truncate(c.CaseID, 30), c.Runs, c.Variants, rate)
+	}
+	return nil
+}
+
+func compareCase(args []string) error {
+	fs := flag.NewFlagSet("compare", flag.ExitOnError)
+	dbPath := fs.String("db", defaultDB(), "path to the SQLite database")
+	metricName := fs.String("metric", string(experiment.MetricLatency),
+		"latency | cost | tokens | success")
+	level := fs.Float64("level", 0.95, "confidence level")
+
+	// Flags on either side of the positional; see showTrace for why.
+	var positional []string
+	rest := args
+	for {
+		if err := fs.Parse(rest); err != nil {
+			return err
+		}
+		if fs.NArg() == 0 {
+			break
+		}
+		positional = append(positional, fs.Arg(0))
+		rest = fs.Args()[1:]
+	}
+	if len(positional) < 1 {
+		return errors.New("usage: agent-eval compare <case> [-metric latency|cost|tokens|success]")
+	}
+
+	metric, err := experiment.ParseMetric(*metricName)
+	if err != nil {
+		return err
+	}
+	if *level <= 0 || *level >= 1 {
+		return fmt.Errorf("level must be between 0 and 1, got %v", *level)
+	}
+
+	ctx := context.Background()
+	store, err := sqlite.Open(ctx, *dbPath)
+	if err != nil {
+		return err
+	}
+	defer store.Close()
+
+	obs, err := store.CaseObservations(ctx, positional[0])
+	if err != nil {
+		return err
+	}
+	if len(obs) == 0 {
+		return fmt.Errorf("no runs recorded for case %q", positional[0])
+	}
+
+	res := experiment.Analyse(positional[0], metric, *level, obs)
+
+	fmt.Printf("case %s   metric %s   %.0f%% confidence\n\n",
+		res.CaseID, res.Metric, res.Level*100)
+	fmt.Printf("%-24s %5s %12s %14s\n", "VARIANT", "N", "MEAN", "INTERVAL")
+	for _, v := range res.Variants {
+		margin := "?"
+		if v.Interval.N >= 2 {
+			margin = "± " + res.Metric.FormatMargin(v.Interval.Margin)
+		}
+		fmt.Printf("%-24s %5d %12s %14s", truncate(v.Variant, 24), v.Interval.N,
+			res.Metric.Format(v.Interval.Mean), margin)
+		if v.Skipped > 0 {
+			fmt.Printf("   (%d run(s) had no value for this metric)", v.Skipped)
+		}
+		fmt.Println()
+	}
+
+	fmt.Printf("\n%s\n", res.Verdict())
+	return nil
 }

@@ -41,6 +41,22 @@ const (
 	AttrServiceName = "service.name"
 )
 
+// Attributes this tool defines itself, for turning traces into an experiment.
+//
+// Prefixed `agent_eval.` rather than dressed up as a convention, because they
+// are not one. The GenAI conventions describe what an agent did; they have
+// nothing to say about which task it was attempting or which variant was under
+// test, and inventing a `gen_ai.` name for our own idea would be a lie about
+// its provenance.
+//
+// Tagging spans is the whole integration. There is no SDK to adopt and no run
+// to register: a trace already *is* one execution, so a trace tagged with a
+// case and a variant is a sample.
+const (
+	AttrCase    = "agent_eval.case"
+	AttrVariant = "agent_eval.variant"
+)
+
 // GenAI operation names that carry meaning for evaluation.
 const (
 	OpInvokeAgent = "invoke_agent"
@@ -120,6 +136,12 @@ type Span struct {
 	AgentName      string
 	ToolName       string
 
+	// CaseID names the task being attempted; Variant names what is under test
+	// (a model, a prompt version, an agent revision). Both empty for ordinary
+	// production traffic, which is the common case.
+	CaseID  string
+	Variant string
+
 	Content Content
 
 	// Attributes carries every attribute as JSON, including the ones already
@@ -192,6 +214,10 @@ type Trace struct {
 	// from gen_ai.conversation.id. A single agent conversation is many traces;
 	// without this they are unrelated rows.
 	SessionID string
+
+	// CaseID and Variant make this trace one observation in an experiment.
+	CaseID  string
+	Variant string
 }
 
 // Duration is the wall time from the earliest span start to the latest end.
@@ -257,6 +283,12 @@ func Rollup(spans []Span) Trace {
 
 		if s.ConversationID != "" && t.SessionID == "" {
 			t.SessionID = s.ConversationID
+		}
+		if s.CaseID != "" && t.CaseID == "" {
+			t.CaseID = s.CaseID
+		}
+		if s.Variant != "" && t.Variant == "" {
+			t.Variant = s.Variant
 		}
 
 		if s.ServiceName != "" && t.ServiceName == "" {
