@@ -1,3 +1,4 @@
-bin/
+/agent-eval
 *.db
-*.sqlite
+*.db-wal
+*.db-shm
