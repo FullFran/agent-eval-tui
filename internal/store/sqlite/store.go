@@ -92,6 +92,7 @@ func (s *Store) SaveSpans(ctx context.Context, spans []domain.Span) error {
 			span.Operation, span.Provider, span.RequestModel, span.ResponseModel,
 			span.InputTokens, span.OutputTokens, span.FinishReasons,
 			span.ConversationID, span.AgentName, span.ToolName,
+			marshalUsage(span.Usage), span.Cost, boolToInt(span.Priced),
 			boolToInt(span.IsLLMCall()), boolToInt(span.IsToolCall()),
 			string(attrs), now,
 		); err != nil {
@@ -131,27 +132,9 @@ func refreshTrace(ctx context.Context, tx *sql.Tx, traceID string, now int64) er
 
 	var spans []domain.Span
 	for rows.Next() {
-		var (
-			span           domain.Span
-			parent         sql.NullString
-			startNS, endNS int64
-			statusCode     string
-		)
-		if err := rows.Scan(
-			&span.SpanID, &span.TraceID, &parent, &span.ServiceName, &span.Name,
-			&startNS, &endNS, &statusCode, &span.RequestModel, &span.ResponseModel,
-			&span.InputTokens, &span.OutputTokens, &span.Operation,
-			&span.AgentName, &span.ToolName,
-		); err != nil {
+		span, err := scanSpan(rows)
+		if err != nil {
 			return fmt.Errorf("scan span of %s: %w", traceID, err)
-		}
-		span.ParentSpanID = parent.String
-		span.StatusCode = domain.StatusCode(statusCode)
-		if startNS > 0 {
-			span.StartTime = time.Unix(0, startNS).UTC()
-		}
-		if endNS > 0 {
-			span.EndTime = time.Unix(0, endNS).UTC()
 		}
 		spans = append(spans, span)
 	}
@@ -168,7 +151,8 @@ func refreshTrace(ctx context.Context, tx *sql.Tx, traceID string, now int64) er
 		t.TraceID, t.ServiceName, t.RootSpanID, t.RootName, t.AgentName,
 		t.StartTime.UnixNano(), traceEndNano(t), t.Duration().Nanoseconds(),
 		t.SpanCount, t.ErrorCount, t.LLMCalls, t.ToolCalls,
-		t.InputTokens, t.OutputTokens, now,
+		t.InputTokens, t.OutputTokens,
+		marshalUsage(t.Usage), t.Cost, boolToInt(t.Priced), t.SessionID, now,
 	)
 	if err != nil {
 		return fmt.Errorf("upsert trace %s: %w", traceID, err)
@@ -193,14 +177,19 @@ func (s *Store) RecentTraces(ctx context.Context, limit int) ([]domain.Trace, er
 		var (
 			t              domain.Trace
 			startNS, endNS int64
+			usageJSON      string
+			priced         int
 		)
 		if err := rows.Scan(
 			&t.TraceID, &t.ServiceName, &t.RootSpanID, &t.RootName, &t.AgentName,
 			&startNS, &endNS, &t.SpanCount, &t.ErrorCount, &t.LLMCalls,
 			&t.ToolCalls, &t.InputTokens, &t.OutputTokens,
+			&usageJSON, &t.Cost, &priced, &t.SessionID,
 		); err != nil {
 			return nil, fmt.Errorf("scan trace: %w", err)
 		}
+		t.Usage = unmarshalUsage(usageJSON)
+		t.Priced = priced == 1
 		if startNS > 0 {
 			t.StartTime = time.Unix(0, startNS).UTC()
 		}
@@ -223,27 +212,9 @@ func (s *Store) TraceSpans(ctx context.Context, traceID string) ([]domain.Span, 
 
 	var out []domain.Span
 	for rows.Next() {
-		var (
-			span           domain.Span
-			parent         sql.NullString
-			startNS, endNS int64
-			statusCode     string
-		)
-		if err := rows.Scan(
-			&span.SpanID, &span.TraceID, &parent, &span.ServiceName, &span.Name,
-			&startNS, &endNS, &statusCode, &span.RequestModel, &span.ResponseModel,
-			&span.InputTokens, &span.OutputTokens, &span.Operation,
-			&span.AgentName, &span.ToolName,
-		); err != nil {
+		span, err := scanSpan(rows)
+		if err != nil {
 			return nil, fmt.Errorf("scan span: %w", err)
-		}
-		span.ParentSpanID = parent.String
-		span.StatusCode = domain.StatusCode(statusCode)
-		if startNS > 0 {
-			span.StartTime = time.Unix(0, startNS).UTC()
-		}
-		if endNS > 0 {
-			span.EndTime = time.Unix(0, endNS).UTC()
 		}
 		out = append(out, span)
 	}
@@ -284,4 +255,110 @@ func boolToInt(b bool) int {
 		return 1
 	}
 	return 0
+}
+
+// scanSpan reads the column list of selectSpansForRollup. Shared so the two
+// callers cannot drift apart from the query.
+func scanSpan(rows *sql.Rows) (domain.Span, error) {
+	var (
+		span           domain.Span
+		parent         sql.NullString
+		startNS, endNS int64
+		statusCode     string
+		usageJSON      string
+		priced         int
+	)
+	if err := rows.Scan(
+		&span.SpanID, &span.TraceID, &parent, &span.ServiceName, &span.Name,
+		&startNS, &endNS, &statusCode, &span.RequestModel, &span.ResponseModel,
+		&span.InputTokens, &span.OutputTokens, &span.Operation,
+		&span.AgentName, &span.ToolName,
+		&usageJSON, &span.Cost, &priced, &span.ConversationID,
+	); err != nil {
+		return domain.Span{}, err
+	}
+	span.ParentSpanID = parent.String
+	span.StatusCode = domain.StatusCode(statusCode)
+	span.Usage = unmarshalUsage(usageJSON)
+	span.Priced = priced == 1
+	if startNS > 0 {
+		span.StartTime = time.Unix(0, startNS).UTC()
+	}
+	if endNS > 0 {
+		span.EndTime = time.Unix(0, endNS).UTC()
+	}
+	return span, nil
+}
+
+func marshalUsage(u map[string]int64) string {
+	if len(u) == 0 {
+		return "{}"
+	}
+	encoded, err := json.Marshal(u)
+	if err != nil {
+		return "{}"
+	}
+	return string(encoded)
+}
+
+func unmarshalUsage(s string) map[string]int64 {
+	if s == "" || s == "{}" {
+		return nil
+	}
+	var u map[string]int64
+	if err := json.Unmarshal([]byte(s), &u); err != nil {
+		return nil
+	}
+	return u
+}
+
+// Session is the rollup across every trace sharing a conversation id.
+type Session struct {
+	SessionID    string
+	Traces       int
+	Spans        int
+	Errors       int
+	InputTokens  int64
+	OutputTokens int64
+	Cost         float64
+	Priced       bool
+	StartTime    time.Time
+	EndTime      time.Time
+}
+
+// Sessions returns recent multi-turn interactions, most recent first.
+func (s *Store) Sessions(ctx context.Context, limit int) ([]Session, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+	rows, err := s.db.QueryContext(ctx, selectSessions, limit)
+	if err != nil {
+		return nil, fmt.Errorf("query sessions: %w", err)
+	}
+	defer rows.Close()
+
+	var out []Session
+	for rows.Next() {
+		var (
+			sess           Session
+			priced         int
+			startNS, endNS int64
+		)
+		if err := rows.Scan(
+			&sess.SessionID, &sess.Traces, &sess.Spans, &sess.Errors,
+			&sess.InputTokens, &sess.OutputTokens, &sess.Cost, &priced,
+			&startNS, &endNS,
+		); err != nil {
+			return nil, fmt.Errorf("scan session: %w", err)
+		}
+		sess.Priced = priced == 1
+		if startNS > 0 {
+			sess.StartTime = time.Unix(0, startNS).UTC()
+		}
+		if endNS > 0 {
+			sess.EndTime = time.Unix(0, endNS).UTC()
+		}
+		out = append(out, sess)
+	}
+	return out, rows.Err()
 }

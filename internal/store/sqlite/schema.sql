@@ -35,6 +35,15 @@ CREATE TABLE IF NOT EXISTS spans (
     agent_name      TEXT NOT NULL DEFAULT '',
     tool_name       TEXT NOT NULL DEFAULT '',
 
+    -- Usage counters as a JSON map, not two columns. Providers bill cached,
+    -- reasoning and fresh tokens differently and keep adding kinds; widening
+    -- the schema per provider is a losing race.
+    usage_json      TEXT NOT NULL DEFAULT '{}',
+    cost_usd        REAL NOT NULL DEFAULT 0,
+    -- Distinguishes "priced at 0" from "no price for this model". Without it a
+    -- missing pricing entry reads as a free model.
+    priced          INTEGER NOT NULL DEFAULT 0,
+
     is_llm_call     INTEGER NOT NULL DEFAULT 0,
     is_tool_call    INTEGER NOT NULL DEFAULT 0,
 
@@ -89,9 +98,19 @@ CREATE TABLE IF NOT EXISTS traces (
 
     input_tokens    INTEGER NOT NULL DEFAULT 0,
     output_tokens   INTEGER NOT NULL DEFAULT 0,
+    usage_json      TEXT NOT NULL DEFAULT '{}',
+    cost_usd        REAL NOT NULL DEFAULT 0,
+    priced          INTEGER NOT NULL DEFAULT 0,
+
+    -- From gen_ai.conversation.id: one multi-turn interaction is many traces,
+    -- and without this they are unrelated rows.
+    session_id      TEXT NOT NULL DEFAULT '',
 
     updated_at      INTEGER NOT NULL
 );
+
+CREATE INDEX IF NOT EXISTS idx_traces_session ON traces (session_id, start_unix_nano)
+    WHERE session_id <> '';
 
 CREATE INDEX IF NOT EXISTS idx_traces_start ON traces (start_unix_nano DESC);
 CREATE INDEX IF NOT EXISTS idx_traces_errors ON traces (error_count) WHERE error_count > 0;

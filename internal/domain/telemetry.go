@@ -16,13 +16,18 @@ import "time"
 // conventions: agents emit `invoke_agent` spans, model calls emit `chat`, and
 // tool invocations emit `execute_tool`.
 const (
-	AttrOperationName      = "gen_ai.operation.name"
-	AttrSystem             = "gen_ai.system"
-	AttrProviderName       = "gen_ai.provider.name"
-	AttrRequestModel       = "gen_ai.request.model"
-	AttrResponseModel      = "gen_ai.response.model"
-	AttrInputTokens        = "gen_ai.usage.input_tokens"
-	AttrOutputTokens       = "gen_ai.usage.output_tokens"
+	AttrOperationName = "gen_ai.operation.name"
+	AttrSystem        = "gen_ai.system"
+	AttrProviderName  = "gen_ai.provider.name"
+	AttrRequestModel  = "gen_ai.request.model"
+	AttrResponseModel = "gen_ai.response.model"
+	AttrInputTokens   = "gen_ai.usage.input_tokens"
+	AttrOutputTokens  = "gen_ai.usage.output_tokens"
+	// AttrUsagePrefix matches every usage attribute, including the vendor
+	// extensions the conventions have not standardised yet -- cached input
+	// tokens above all, which cost a fraction of a fresh one and therefore
+	// change the cost of any agent with a long, reused system prompt.
+	AttrUsagePrefix        = "gen_ai.usage."
 	AttrFinishReasons      = "gen_ai.response.finish_reasons"
 	AttrConversationID     = "gen_ai.conversation.id"
 	AttrAgentName          = "gen_ai.agent.name"
@@ -95,12 +100,21 @@ type Span struct {
 
 	// GenAI fields. Zero values mean "the span did not report this", which is
 	// the normal case for spans that are not model or tool calls.
-	Operation      string
-	Provider       string
-	RequestModel   string
-	ResponseModel  string
-	InputTokens    int64
-	OutputTokens   int64
+	Operation     string
+	Provider      string
+	RequestModel  string
+	ResponseModel string
+	InputTokens   int64
+	OutputTokens  int64
+	// Usage keeps every reported usage counter by its short name ("input",
+	// "output", "cache_read_input_tokens", ...). Two integer columns cannot
+	// express a provider that bills cached, reasoning and fresh tokens at
+	// different rates, and the set of names is still growing.
+	Usage map[string]int64
+	// Cost in USD, when a pricing table covered the model. Zero means "not
+	// priced", which is deliberately distinguishable from "free" by Priced.
+	Cost           float64
+	Priced         bool
 	FinishReasons  string
 	ConversationID string
 	AgentName      string
@@ -170,6 +184,14 @@ type Trace struct {
 
 	InputTokens  int64
 	OutputTokens int64
+	Usage        map[string]int64
+	Cost         float64
+	Priced       bool
+
+	// SessionID groups traces belonging to one multi-turn interaction, taken
+	// from gen_ai.conversation.id. A single agent conversation is many traces;
+	// without this they are unrelated rows.
+	SessionID string
 }
 
 // Duration is the wall time from the earliest span start to the latest end.
@@ -221,6 +243,21 @@ func Rollup(spans []Span) Trace {
 
 		t.InputTokens += s.InputTokens
 		t.OutputTokens += s.OutputTokens
+
+		for name, n := range s.Usage {
+			if t.Usage == nil {
+				t.Usage = map[string]int64{}
+			}
+			t.Usage[name] += n
+		}
+		if s.Priced {
+			t.Cost += s.Cost
+			t.Priced = true
+		}
+
+		if s.ConversationID != "" && t.SessionID == "" {
+			t.SessionID = s.ConversationID
+		}
 
 		if s.ServiceName != "" && t.ServiceName == "" {
 			t.ServiceName = s.ServiceName

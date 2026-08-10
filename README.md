@@ -79,6 +79,7 @@ Then read what it saw:
 ```bash
 ./agent-eval traces
 ./agent-eval trace <trace-id>
+./agent-eval sessions
 ```
 
 ```
@@ -104,6 +105,40 @@ already instrumented needs no changes:
 | `gen_ai.input.messages`, `gen_ai.output.messages`, `gen_ai.system_instructions` | Content, in its own table |
 | `gen_ai.tool.call.arguments`, `gen_ai.tool.call.result` | Tool payloads, in that same table |
 | Span status | Errors, counted per trace |
+| `gen_ai.conversation.id` | Session, grouping the many traces of one multi-turn interaction |
+| every other `gen_ai.usage.*` counter | Usage map — cached, reasoning and audio tokens are billed differently and the set keeps growing |
+
+## Cost
+
+Prices are **not** hand-written. The [LiteLLM pricing dataset](https://github.com/BerriAI/litellm)
+is embedded as a snapshot, so a fresh binary prices ~1,600 models with no
+configuration:
+
+```
+TRACE                              ROOT                  DURATION SPANS   LLM  TOOL    TOKENS       COST
+0a0b0c0d0e0f10111213141516171819   invoke_agent soporte      4.5s     3     1     1      2992    $0.0205
+```
+
+Regenerate the snapshot with `./scripts/update-pricing.sh`.
+
+A table someone types by hand is stale the week after, and a stale price is
+worse than no price: it prints a confident wrong number that nobody re-checks.
+Same reasoning as `claudeops-tui`, which prices from LiteLLM for the same reason.
+
+Two details that matter more than they look:
+
+- **Cached input is priced separately.** At roughly a tenth of fresh input, an
+  agent reusing a long system prompt has a cost profile that two integer columns
+  cannot express.
+- **"Not priced" prints as `-`, never as `$0.0000`.** A model missing from the
+  dataset must not read as a free one.
+
+Negotiated rates are in no public dataset, so `-pricing overrides.json` layers on
+top of the snapshot rather than replacing it:
+
+```json
+{ "models": { "claude-sonnet-4-5": { "per_million": { "input_tokens": 2.4, "output_tokens": 12.0 } } } }
+```
 
 Content lives in a separate table on purpose. It is the only place personal
 data can appear, so a retention policy has exactly one table to delete from
