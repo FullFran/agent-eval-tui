@@ -21,13 +21,19 @@ import (
 	"syscall"
 	"time"
 
+	tea "github.com/charmbracelet/bubbletea"
+
+	"github.com/FullFran/agent-eval-tui/internal/config"
 	"github.com/FullFran/agent-eval-tui/internal/domain"
 	"github.com/FullFran/agent-eval-tui/internal/ingest/otlp"
 	"github.com/FullFran/agent-eval-tui/internal/pricing"
 	"github.com/FullFran/agent-eval-tui/internal/store/sqlite"
+	"github.com/FullFran/agent-eval-tui/internal/tui"
 )
 
-const defaultDB = "agent-eval.db"
+// defaultDB is resolved at call time rather than stored in a constant, so
+// AGENT_EVAL_DB works without every command remembering to check it.
+func defaultDB() string { return config.DefaultDBPath() }
 
 func main() {
 	if err := run(os.Args[1:]); err != nil {
@@ -37,12 +43,15 @@ func main() {
 }
 
 func run(args []string) error {
+	// No arguments opens the TUI. Looking at what the agents did is the common
+	// case, and the common case should not need a subcommand.
 	if len(args) == 0 {
-		usage()
-		return errors.New("no command given")
+		return runTUI(nil)
 	}
 
 	switch args[0] {
+	case "tui":
+		return runTUI(args[1:])
 	case "serve":
 		return serve(args[1:])
 	case "traces":
@@ -61,22 +70,55 @@ func run(args []string) error {
 }
 
 func usage() {
-	fmt.Fprint(os.Stderr, `agent-eval — agent telemetry over OTLP, in one binary and one SQLite file
+	fmt.Fprintf(os.Stderr, `agent-eval — LLM and agent observability in one binary and one SQLite file
 
-  agent-eval serve  [-addr :4318] [-db agent-eval.db] [-pricing prices.json] [-debug]
-  agent-eval traces [-db agent-eval.db] [-limit 20]
-  agent-eval trace  <trace-id> [-db agent-eval.db]
-  agent-eval sessions [-db agent-eval.db] [-limit 20]
+  agent-eval                 open the TUI
+  agent-eval serve           receive OTLP on :4318
 
-Point any OpenTelemetry exporter at it:
+  agent-eval traces          list recent traces
+  agent-eval trace <id>      print one trace as a span tree
+  agent-eval sessions        list multi-turn sessions
+
+Flags: -db <path>  -limit <n>  -addr <host:port>  -pricing <overrides.json>  -debug
+
+Connect an agent — no code change, it already speaks OpenTelemetry:
   OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:4318
-`)
+  OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
+  OTEL_SERVICE_NAME=my-agent
+
+Database: %s
+  Override with -db or AGENT_EVAL_DB.
+`, defaultDB())
+}
+
+func runTUI(args []string) error {
+	fs := flag.NewFlagSet("tui", flag.ExitOnError)
+	dbPath := fs.String("db", defaultDB(), "path to the SQLite database")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+
+	ctx := context.Background()
+	if err := config.EnsureParent(*dbPath); err != nil {
+		return err
+	}
+	store, err := sqlite.Open(ctx, *dbPath)
+	if err != nil {
+		return err
+	}
+	defer store.Close()
+
+	// AltScreen so the terminal is restored on exit rather than leaving the
+	// last frame in the scrollback.
+	program := tea.NewProgram(tui.New(store), tea.WithAltScreen())
+	_, err = program.Run()
+	return err
 }
 
 func serve(args []string) error {
 	fs := flag.NewFlagSet("serve", flag.ExitOnError)
 	addr := fs.String("addr", ":4318", "listen address for OTLP/HTTP")
-	dbPath := fs.String("db", defaultDB, "path to the SQLite database")
+	dbPath := fs.String("db", defaultDB(), "path to the SQLite database")
 	debug := fs.Bool("debug", false, "log every stored batch")
 	pricingPath := fs.String("pricing", "", "optional JSON overrides for negotiated rates; public prices are already embedded")
 	if err := fs.Parse(args); err != nil {
@@ -92,6 +134,9 @@ func serve(args []string) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
+	if err := config.EnsureParent(*dbPath); err != nil {
+		return err
+	}
 	store, err := sqlite.Open(ctx, *dbPath)
 	if err != nil {
 		return err
@@ -134,7 +179,7 @@ func serve(args []string) error {
 
 func listTraces(args []string) error {
 	fs := flag.NewFlagSet("traces", flag.ExitOnError)
-	dbPath := fs.String("db", defaultDB, "path to the SQLite database")
+	dbPath := fs.String("db", defaultDB(), "path to the SQLite database")
 	limit := fs.Int("limit", 20, "how many traces to show")
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -173,7 +218,7 @@ func listTraces(args []string) error {
 
 func listSessions(args []string) error {
 	fs := flag.NewFlagSet("sessions", flag.ExitOnError)
-	dbPath := fs.String("db", defaultDB, "path to the SQLite database")
+	dbPath := fs.String("db", defaultDB(), "path to the SQLite database")
 	limit := fs.Int("limit", 20, "how many sessions to show")
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -216,7 +261,7 @@ func money(cost float64, priced bool) string {
 
 func showTrace(args []string) error {
 	fs := flag.NewFlagSet("trace", flag.ExitOnError)
-	dbPath := fs.String("db", defaultDB, "path to the SQLite database")
+	dbPath := fs.String("db", defaultDB(), "path to the SQLite database")
 	// Go's flag package stops parsing at the first non-flag argument, so
 	// `trace <id> -db path` would silently ignore -db and open the default
 	// database — reporting "not found" for a trace that exists. Parsing in
