@@ -1,0 +1,66 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Vet, test, build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: gofmt
+        run: |
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then
+            echo "not gofmt'd:"; echo "$unformatted"; exit 1
+          fi
+
+      - run: go vet ./...
+
+      # -race matters here specifically: the receiver serves concurrent exports
+      # into a single store, which is exactly where a data race would hide.
+      - run: go test -race ./...
+
+      # CGO_ENABLED=0 is the deployment contract, not a preference: a pure-Go
+      # SQLite is what makes this one static binary you can drop next to an
+      # agent. If a cgo dependency ever sneaks in, this step catches it.
+      - name: Build static binary
+        env:
+          CGO_ENABLED: 0
+        run: go build -o agent-eval ./cmd/agent-eval
+
+      # Exercises the real binary over real HTTP with a real OTLP/JSON payload.
+      # The unit tests build their JSON with protojson.Marshal, which emits
+      # base64 IDs; only a hand-written hex payload like this one reproduces
+      # what an SDK actually sends.
+      - name: Smoke test the binary end to end
+        run: |
+          ./agent-eval serve -addr 127.0.0.1:14318 -db /tmp/ci.db &
+          for _ in $(seq 1 20); do
+            curl -sf http://127.0.0.1:14318/healthz > /dev/null && break
+            sleep 0.5
+          done
+          curl -sf -X POST http://127.0.0.1:14318/v1/traces \
+            -H 'Content-Type: application/json' \
+            --data-binary @testdata/otlp-agent-trace.json > /dev/null
+          ./agent-eval traces -db /tmp/ci.db | tee /tmp/out.txt
+          grep -q '0a0b0c0d0e0f10111213141516171819' /tmp/out.txt
+          ./agent-eval trace 0a0b0c0d0e0f10111213141516171819 -db /tmp/ci.db

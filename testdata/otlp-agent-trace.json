@@ -1,0 +1,19 @@
+{"resourceSpans":[{"resource":{"attributes":[{"key":"service.name","value":{"stringValue":"hagabox"}}]},
+"scopeSpans":[{"spans":[
+{"traceId":"0a0b0c0d0e0f10111213141516171819","spanId":"1111111111111111","name":"invoke_agent soporte","kind":1,
+ "startTimeUnixNano":"1786104000000000000","endTimeUnixNano":"1786104004500000000",
+ "attributes":[{"key":"gen_ai.operation.name","value":{"stringValue":"invoke_agent"}},
+               {"key":"gen_ai.agent.name","value":{"stringValue":"soporte"}}]},
+{"traceId":"0a0b0c0d0e0f10111213141516171819","spanId":"2222222222222222","parentSpanId":"1111111111111111","name":"chat",
+ "startTimeUnixNano":"1786104000200000000","endTimeUnixNano":"1786104002100000000",
+ "attributes":[{"key":"gen_ai.operation.name","value":{"stringValue":"chat"}},
+               {"key":"gen_ai.provider.name","value":{"stringValue":"anthropic"}},
+               {"key":"gen_ai.request.model","value":{"stringValue":"claude-sonnet-4-5"}},
+               {"key":"gen_ai.usage.input_tokens","value":{"intValue":"2480"}},
+               {"key":"gen_ai.usage.output_tokens","value":{"intValue":"512"}}]},
+{"traceId":"0a0b0c0d0e0f10111213141516171819","spanId":"3333333333333333","parentSpanId":"1111111111111111","name":"execute_tool buscar_pedido",
+ "startTimeUnixNano":"1786104002200000000","endTimeUnixNano":"1786104003000000000",
+ "status":{"code":2,"message":"upstream 504"},
+ "attributes":[{"key":"gen_ai.operation.name","value":{"stringValue":"execute_tool"}},
+               {"key":"gen_ai.tool.name","value":{"stringValue":"buscar_pedido"}}]}
+]}]}]}

@@ -59,10 +59,88 @@ The second column is where the value is and where the competition is thin.
 
 An unvalidated judge is an invented number with extra steps.
 
+## Quickstart
+
+One binary, one SQLite file, no server to install.
+
+```bash
+go build -o agent-eval ./cmd/agent-eval
+./agent-eval serve                      # OTLP/HTTP on :4318
+```
+
+Point any OpenTelemetry exporter at it and run your agent:
+
+```bash
+export OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:4318
+```
+
+Then read what it saw:
+
+```bash
+./agent-eval traces
+./agent-eval trace <trace-id>
+```
+
+```
+trace 0a0b0c0d…  service=hagabox  duration=4.5s  spans=3  llm=1  tools=1  tokens=2480/512
+
+• invoke_agent soporte  [invoke_agent · 4.5s]
+  • chat  [chat · claude-sonnet-4-5 · tokens=2480/512 · 1.9s]
+  ✗ execute_tool buscar_pedido  [execute_tool · tool=buscar_pedido · 800ms]
+```
+
+## What it captures
+
+Mapped from the OpenTelemetry GenAI semantic conventions, so an agent that is
+already instrumented needs no changes:
+
+| From the conventions | Stored as |
+|---|---|
+| `gen_ai.operation.name` (`invoke_agent`, `chat`, `execute_tool`) | Operation, and whether the span is an LLM or tool call |
+| `gen_ai.request.model`, `gen_ai.response.model` | Requested and resolved model — they differ, and cost belongs to what ran |
+| `gen_ai.usage.input_tokens`, `gen_ai.usage.output_tokens` | Token counts, per span and rolled up per trace |
+| `gen_ai.tool.name` | Which tool, how often, how long |
+| `gen_ai.provider.name` / `gen_ai.system` | Provider |
+| `gen_ai.input.messages`, `gen_ai.output.messages`, `gen_ai.system_instructions` | Content, in its own table |
+| `gen_ai.tool.call.arguments`, `gen_ai.tool.call.result` | Tool payloads, in that same table |
+| Span status | Errors, counted per trace |
+
+Content lives in a separate table on purpose. It is the only place personal
+data can appear, so a retention policy has exactly one table to delete from
+without losing a single measurement.
+
+Every attribute is also kept as raw JSON. The conventions are still moving; when
+they move again, a new column can be backfilled from stored data instead of
+asking everyone to re-run their agents.
+
+## Deployment
+
+`CGO_ENABLED=0` produces a static binary, because `modernc.org/sqlite` is a
+pure-Go SQLite. That is the whole deployment story: copy one file next to
+whatever is running your agents, give it a path for the database, done. No
+collector, no Postgres, no Docker required.
+
 ## Status
 
-Planning. See the issues. The domain model comes before the TUI — the terminal
-interface is the fun part and the part that decides least.
+**Ingest works.** OTLP/HTTP over protobuf and JSON, GenAI attributes mapped,
+persisted to SQLite, trace rollups, and a CLI that lists traces and prints the
+span tree. CI vets, race-tests, builds the static binary and then drives the
+real binary end to end with a real OTLP payload.
+
+**The TUI does not exist yet**, and neither does the evaluation runner. The
+domain model comes before the terminal interface — that is the fun part and the
+part that decides least.
+
+Two bugs found while building this, both worth knowing if you write an OTLP
+receiver of your own:
+
+- **OTLP/JSON encodes trace and span IDs as hex, but `protojson` decodes
+  `bytes` fields as base64.** Feeding a real payload to plain `protojson`
+  produces a different, valid-looking ID for every span — no error, and children
+  stop joining their parents. IDs are normalised before decoding.
+- **An absent parent arrives as eight zero bytes, not an empty field.** Hex-
+  encoding it yields `0000000000000000`, so every root span looks like the child
+  of a span that does not exist.
 
 ---
 
