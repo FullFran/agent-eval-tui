@@ -290,3 +290,27 @@ func TestRunnerCancelledContext(t *testing.T) {
 		t.Errorf("got %d outcomes, want 0", len(sink.outcomes))
 	}
 }
+
+// Cancelling during a run is not a timeout: nothing is recorded for the
+// interrupted run and Run reports the cancellation itself.
+func TestRunnerCancelledDuringAgent(t *testing.T) {
+	spec := Spec{
+		Runs:     1,
+		Cases:    []Case{{ID: "c", Workdir: t.TempDir(), Accept: "true"}},
+		Variants: []Variant{{ID: "v", Command: []string{"sleep", "5"}}},
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	defer cancel()
+	sink := &recordingSink{}
+	start := time.Now()
+	err := (Runner{}).Run(ctx, spec, sink)
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("err = %v, want the context's own error", err)
+	}
+	if len(sink.outcomes) != 0 {
+		t.Errorf("recorded %+v for an interrupted run, want nothing", sink.outcomes)
+	}
+	if time.Since(start) > 3*time.Second {
+		t.Errorf("Run took %v; the agent was not stopped", time.Since(start))
+	}
+}
