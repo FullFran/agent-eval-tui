@@ -116,7 +116,7 @@ func Analyse(caseID string, metric Metric, level float64, obs []sqlite.Observati
 	for _, name := range names {
 		res.Variants = append(res.Variants, VariantResult{
 			Variant:  name,
-			Interval: stats.ConfidenceInterval(stats.Sample{Values: byVariant[name]}, level),
+			Interval: interval(metric, stats.Sample{Values: byVariant[name]}, level),
 			Skipped:  skipped[name],
 		})
 	}
@@ -124,13 +124,41 @@ func Analyse(caseID string, metric Metric, level float64, obs []sqlite.Observati
 	if len(res.Variants) == 2 {
 		a := stats.Sample{Values: byVariant[res.Variants[0].Variant]}
 		b := stats.Sample{Values: byVariant[res.Variants[1].Variant]}
-		c := stats.Compare(a, b, level)
+		c := compare(metric, a, b, level)
 		res.Comparison = &c
 		res.Baseline = res.Variants[0].Variant
 		res.Candidate = res.Variants[1].Variant
 	}
 
 	return res
+}
+
+// interval picks the interval for the metric. Success is a proportion of 0/1
+// outcomes and gets Wilson; the rest are means and get the t interval.
+func interval(m Metric, s stats.Sample, level float64) stats.Interval {
+	if m == MetricSuccess {
+		return stats.ProportionInterval(s, level)
+	}
+	return stats.ConfidenceInterval(s, level)
+}
+
+func compare(m Metric, a, b stats.Sample, level float64) stats.Comparison {
+	if m == MetricSuccess {
+		return stats.CompareProportions(a, b, level)
+	}
+	return stats.Compare(a, b, level)
+}
+
+// FormatInterval renders an interval's uncertainty: "± margin" when it is
+// symmetric, explicit "[low, high]" bounds when it is not.
+func (m Metric) FormatInterval(i stats.Interval) string {
+	if math.IsNaN(i.Margin) {
+		return "?"
+	}
+	if i.Symmetric() {
+		return "± " + m.FormatMargin(i.Margin)
+	}
+	return "[" + m.Format(i.Low()) + ", " + m.Format(i.High()) + "]"
 }
 
 // Format renders a value in the metric's own units.
@@ -207,10 +235,18 @@ func (r Result) Verdict() string {
 	if d.Mean > 0 {
 		sign = "+"
 	}
-	head := fmt.Sprintf("%s − %s = %s%s ± %s   (n=%d, df=%.1f)",
-		r.Candidate, r.Baseline,
-		sign, r.Metric.Format(d.Mean), r.Metric.FormatMargin(d.Margin),
-		d.N, r.Comparison.DF)
+	var head string
+	if r.Comparison.Method == stats.MethodNewcombe {
+		head = fmt.Sprintf("%s − %s = %s%s %s   (n=%d, Newcombe)",
+			r.Candidate, r.Baseline,
+			sign, r.Metric.FormatMargin(d.Mean),
+			"["+r.Metric.FormatMargin(d.Low())+", "+r.Metric.FormatMargin(d.High())+"]", d.N)
+	} else {
+		head = fmt.Sprintf("%s − %s = %s%s ± %s   (n=%d, df=%.1f)",
+			r.Candidate, r.Baseline,
+			sign, r.Metric.Format(d.Mean), r.Metric.FormatMargin(d.Margin),
+			d.N, r.Comparison.DF)
+	}
 
 	if r.Comparison.Significant() {
 		return head + fmt.Sprintf("\n  the difference is real at %.0f%% confidence", r.Level*100)

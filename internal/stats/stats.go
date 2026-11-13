@@ -93,11 +93,40 @@ type Interval struct {
 	Margin float64 // half-width; the interval is Mean ± Margin
 	N      int
 	Level  float64 // e.g. 0.95
+
+	// Explicit bounds for intervals that are not symmetric around Mean, such
+	// as Wilson's. Margin then holds the half-width, for callers that only
+	// need a size; Low and High are the truth.
+	lower, upper float64
+	bounded      bool
 }
 
 // Low and High are the interval bounds.
-func (i Interval) Low() float64  { return i.Mean - i.Margin }
-func (i Interval) High() float64 { return i.Mean + i.Margin }
+func (i Interval) Low() float64 {
+	if i.bounded {
+		return i.lower
+	}
+	return i.Mean - i.Margin
+}
+
+func (i Interval) High() float64 {
+	if i.bounded {
+		return i.upper
+	}
+	return i.Mean + i.Margin
+}
+
+// Symmetric reports whether the interval is Mean ± Margin. When it is not,
+// printing it as "± Margin" misstates one of the bounds.
+func (i Interval) Symmetric() bool { return !i.bounded }
+
+// boundedInterval builds an interval from explicit bounds.
+func boundedInterval(mean, lower, upper float64, n int, level float64) Interval {
+	return Interval{
+		Mean: mean, Margin: (upper - lower) / 2, N: n, Level: level,
+		lower: lower, upper: upper, bounded: true,
+	}
+}
 
 // ExcludesZero reports whether the interval is entirely above or below zero.
 //
@@ -128,6 +157,7 @@ func ConfidenceInterval(s Sample, level float64) Interval {
 
 // Comparison is the answer to "is B different from A?".
 type Comparison struct {
+	Method     string // MethodWelch or MethodNewcombe
 	A, B       Interval
 	Difference Interval // B − A, with its own interval
 	Welch      float64  // the t statistic
@@ -150,6 +180,7 @@ func (c Comparison) Significant() bool { return c.Difference.ExcludesZero() }
 // narrow, which is the failure mode that matters.
 func Compare(a, b Sample, level float64) Comparison {
 	out := Comparison{
+		Method:     MethodWelch,
 		A:          ConfidenceInterval(a, level),
 		B:          ConfidenceInterval(b, level),
 		Difference: Interval{Mean: math.NaN(), Margin: math.NaN(), Level: level},

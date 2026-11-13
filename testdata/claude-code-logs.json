@@ -1,0 +1,923 @@
+{
+ "resourceLogs": [
+  {
+   "resource": {
+    "attributes": [
+     {
+      "key": "service.name",
+      "value": {
+       "stringValue": "claude-code"
+      }
+     },
+     {
+      "key": "service.version",
+      "value": {
+       "stringValue": "2.1.400"
+      }
+     },
+     {
+      "key": "agent_eval.case",
+      "value": {
+       "stringValue": "fix-typo"
+      }
+     },
+     {
+      "key": "agent_eval.variant",
+      "value": {
+       "stringValue": "sonnet-subagents"
+      }
+     },
+     {
+      "key": "agent_eval.run",
+      "value": {
+       "stringValue": "run-0001"
+      }
+     }
+    ]
+   },
+   "scopeLogs": [
+    {
+     "scope": {
+      "name": "com.anthropic.claude_code.events",
+      "version": "2.1.400"
+     },
+     "logRecords": [
+      {
+       "timeUnixNano": "1794590000000000000",
+       "observedTimeUnixNano": "1794590000000000000",
+       "body": {
+        "stringValue": "claude_code.hook_registered"
+       },
+       "attributes": [
+        {
+         "key": "agent_eval.case",
+         "value": {
+          "stringValue": "fix-typo"
+         }
+        },
+        {
+         "key": "agent_eval.variant",
+         "value": {
+          "stringValue": "sonnet-subagents"
+         }
+        },
+        {
+         "key": "agent_eval.run",
+         "value": {
+          "stringValue": "run-0001"
+         }
+        },
+        {
+         "key": "session.id",
+         "value": {
+          "stringValue": "00000000-0000-4000-8000-000000000001"
+         }
+        },
+        {
+         "key": "user.id",
+         "value": {
+          "stringValue": "0000000000000000000000000000000000000000000000000000000000000000"
+         }
+        },
+        {
+         "key": "user.email",
+         "value": {
+          "stringValue": "someone@example.com"
+         }
+        },
+        {
+         "key": "user.account_uuid",
+         "value": {
+          "stringValue": "00000000-0000-4000-8000-0000000000aa"
+         }
+        },
+        {
+         "key": "user.account_id",
+         "value": {
+          "stringValue": "user_000000000000000000000000"
+         }
+        },
+        {
+         "key": "organization.id",
+         "value": {
+          "stringValue": "00000000-0000-4000-8000-0000000000bb"
+         }
+        },
+        {
+         "key": "terminal.type",
+         "value": {
+          "stringValue": "tmux"
+         }
+        },
+        {
+         "key": "event.name",
+         "value": {
+          "stringValue": "hook_registered"
+         }
+        },
+        {
+         "key": "event.timestamp",
+         "value": {
+          "stringValue": "x"
+         }
+        },
+        {
+         "key": "event.sequence",
+         "value": {
+          "intValue": "1"
+         }
+        },
+        {
+         "key": "prompt.id",
+         "value": {
+          "stringValue": "00000000-0000-4000-8000-0000000000cc"
+         }
+        },
+        {
+         "key": "hook_event",
+         "value": {
+          "stringValue": "SessionStart"
+         }
+        }
+       ]
+      },
+      {
+       "timeUnixNano": "1794590000100000000",
+       "observedTimeUnixNano": "1794590000100000000",
+       "body": {
+        "stringValue": "claude_code.user_prompt"
+       },
+       "attributes": [
+        {
+         "key": "agent_eval.case",
+         "value": {
+          "stringValue": "fix-typo"
+         }
+        },
+        {
+         "key": "agent_eval.variant",
+         "value": {
+          "stringValue": "sonnet-subagents"
+         }
+        },
+        {
+         "key": "agent_eval.run",
+         "value": {
+          "stringValue": "run-0001"
+         }
+        },
+        {
+         "key": "session.id",
+         "value": {
+          "stringValue": "00000000-0000-4000-8000-000000000001"
+         }
+        },
+        {
+         "key": "user.id",
+         "value": {
+          "stringValue": "0000000000000000000000000000000000000000000000000000000000000000"
+         }
+        },
+        {
+         "key": "user.email",
+         "value": {
+          "stringValue": "someone@example.com"
+         }
+        },
+        {
+         "key": "user.account_uuid",
+         "value": {
+          "stringValue": "00000000-0000-4000-8000-0000000000aa"
+         }
+        },
+        {
+         "key": "user.account_id",
+         "value": {
+          "stringValue": "user_000000000000000000000000"
+         }
+        },
+        {
+         "key": "organization.id",
+         "value": {
+          "stringValue": "00000000-0000-4000-8000-0000000000bb"
+         }
+        },
+        {
+         "key": "terminal.type",
+         "value": {
+          "stringValue": "tmux"
+         }
+        },
+        {
+         "key": "event.name",
+         "value": {
+          "stringValue": "user_prompt"
+         }
+        },
+        {
+         "key": "event.timestamp",
+         "value": {
+          "stringValue": "x"
+         }
+        },
+        {
+         "key": "event.sequence",
+         "value": {
+          "intValue": "2"
+         }
+        },
+        {
+         "key": "prompt.id",
+         "value": {
+          "stringValue": "00000000-0000-4000-8000-0000000000cc"
+         }
+        },
+        {
+         "key": "prompt_length",
+         "value": {
+          "intValue": "42"
+         }
+        },
+        {
+         "key": "prompt",
+         "value": {
+          "stringValue": "<REDACTED>"
+         }
+        }
+       ]
+      },
+      {
+       "timeUnixNano": "1794590002100000000",
+       "observedTimeUnixNano": "1794590002100000000",
+       "body": {
+        "stringValue": "claude_code.api_request"
+       },
+       "attributes": [
+        {
+         "key": "agent_eval.case",
+         "value": {
+          "stringValue": "fix-typo"
+         }
+        },
+        {
+         "key": "agent_eval.variant",
+         "value": {
+          "stringValue": "sonnet-subagents"
+         }
+        },
+        {
+         "key": "agent_eval.run",
+         "value": {
+          "stringValue": "run-0001"
+         }
+        },
+        {
+         "key": "session.id",
+         "value": {
+          "stringValue": "00000000-0000-4000-8000-000000000001"
+         }
+        },
+        {
+         "key": "user.id",
+         "value": {
+          "stringValue": "0000000000000000000000000000000000000000000000000000000000000000"
+         }
+        },
+        {
+         "key": "user.email",
+         "value": {
+          "stringValue": "someone@example.com"
+         }
+        },
+        {
+         "key": "user.account_uuid",
+         "value": {
+          "stringValue": "00000000-0000-4000-8000-0000000000aa"
+         }
+        },
+        {
+         "key": "user.account_id",
+         "value": {
+          "stringValue": "user_000000000000000000000000"
+         }
+        },
+        {
+         "key": "organization.id",
+         "value": {
+          "stringValue": "00000000-0000-4000-8000-0000000000bb"
+         }
+        },
+        {
+         "key": "terminal.type",
+         "value": {
+          "stringValue": "tmux"
+         }
+        },
+        {
+         "key": "event.name",
+         "value": {
+          "stringValue": "api_request"
+         }
+        },
+        {
+         "key": "event.timestamp",
+         "value": {
+          "stringValue": "x"
+         }
+        },
+        {
+         "key": "event.sequence",
+         "value": {
+          "intValue": "3"
+         }
+        },
+        {
+         "key": "prompt.id",
+         "value": {
+          "stringValue": "00000000-0000-4000-8000-0000000000cc"
+         }
+        },
+        {
+         "key": "model",
+         "value": {
+          "stringValue": "claude-sonnet-5-5"
+         }
+        },
+        {
+         "key": "input_tokens",
+         "value": {
+          "intValue": "12"
+         }
+        },
+        {
+         "key": "output_tokens",
+         "value": {
+          "intValue": "300"
+         }
+        },
+        {
+         "key": "cache_read_tokens",
+         "value": {
+          "intValue": "11000"
+         }
+        },
+        {
+         "key": "cache_creation_tokens",
+         "value": {
+          "intValue": "50000"
+         }
+        },
+        {
+         "key": "cost_usd",
+         "value": {
+          "doubleValue": 0.2
+         }
+        },
+        {
+         "key": "duration_ms",
+         "value": {
+          "intValue": "2000"
+         }
+        },
+        {
+         "key": "request_id",
+         "value": {
+          "stringValue": "req_1"
+         }
+        },
+        {
+         "key": "query_source",
+         "value": {
+          "stringValue": "repl_main_thread"
+         }
+        }
+       ]
+      },
+      {
+       "timeUnixNano": "1794590002600000000",
+       "observedTimeUnixNano": "1794590002600000000",
+       "body": {
+        "stringValue": "claude_code.tool_result"
+       },
+       "attributes": [
+        {
+         "key": "agent_eval.case",
+         "value": {
+          "stringValue": "fix-typo"
+         }
+        },
+        {
+         "key": "agent_eval.variant",
+         "value": {
+          "stringValue": "sonnet-subagents"
+         }
+        },
+        {
+         "key": "agent_eval.run",
+         "value": {
+          "stringValue": "run-0001"
+         }
+        },
+        {
+         "key": "session.id",
+         "value": {
+          "stringValue": "00000000-0000-4000-8000-000000000001"
+         }
+        },
+        {
+         "key": "user.id",
+         "value": {
+          "stringValue": "0000000000000000000000000000000000000000000000000000000000000000"
+         }
+        },
+        {
+         "key": "user.email",
+         "value": {
+          "stringValue": "someone@example.com"
+         }
+        },
+        {
+         "key": "user.account_uuid",
+         "value": {
+          "stringValue": "00000000-0000-4000-8000-0000000000aa"
+         }
+        },
+        {
+         "key": "user.account_id",
+         "value": {
+          "stringValue": "user_000000000000000000000000"
+         }
+        },
+        {
+         "key": "organization.id",
+         "value": {
+          "stringValue": "00000000-0000-4000-8000-0000000000bb"
+         }
+        },
+        {
+         "key": "terminal.type",
+         "value": {
+          "stringValue": "tmux"
+         }
+        },
+        {
+         "key": "event.name",
+         "value": {
+          "stringValue": "tool_result"
+         }
+        },
+        {
+         "key": "event.timestamp",
+         "value": {
+          "stringValue": "x"
+         }
+        },
+        {
+         "key": "event.sequence",
+         "value": {
+          "intValue": "4"
+         }
+        },
+        {
+         "key": "prompt.id",
+         "value": {
+          "stringValue": "00000000-0000-4000-8000-0000000000cc"
+         }
+        },
+        {
+         "key": "tool_name",
+         "value": {
+          "stringValue": "Read"
+         }
+        },
+        {
+         "key": "tool_use_id",
+         "value": {
+          "stringValue": "toolu_1"
+         }
+        },
+        {
+         "key": "success",
+         "value": {
+          "stringValue": "true"
+         }
+        },
+        {
+         "key": "duration_ms",
+         "value": {
+          "intValue": "400"
+         }
+        }
+       ]
+      },
+      {
+       "timeUnixNano": "1794590003100000000",
+       "observedTimeUnixNano": "1794590003100000000",
+       "body": {
+        "stringValue": "claude_code.tool_result"
+       },
+       "attributes": [
+        {
+         "key": "agent_eval.case",
+         "value": {
+          "stringValue": "fix-typo"
+         }
+        },
+        {
+         "key": "agent_eval.variant",
+         "value": {
+          "stringValue": "sonnet-subagents"
+         }
+        },
+        {
+         "key": "agent_eval.run",
+         "value": {
+          "stringValue": "run-0001"
+         }
+        },
+        {
+         "key": "session.id",
+         "value": {
+          "stringValue": "00000000-0000-4000-8000-000000000001"
+         }
+        },
+        {
+         "key": "user.id",
+         "value": {
+          "stringValue": "0000000000000000000000000000000000000000000000000000000000000000"
+         }
+        },
+        {
+         "key": "user.email",
+         "value": {
+          "stringValue": "someone@example.com"
+         }
+        },
+        {
+         "key": "user.account_uuid",
+         "value": {
+          "stringValue": "00000000-0000-4000-8000-0000000000aa"
+         }
+        },
+        {
+         "key": "user.account_id",
+         "value": {
+          "stringValue": "user_000000000000000000000000"
+         }
+        },
+        {
+         "key": "organization.id",
+         "value": {
+          "stringValue": "00000000-0000-4000-8000-0000000000bb"
+         }
+        },
+        {
+         "key": "terminal.type",
+         "value": {
+          "stringValue": "tmux"
+         }
+        },
+        {
+         "key": "event.name",
+         "value": {
+          "stringValue": "tool_result"
+         }
+        },
+        {
+         "key": "event.timestamp",
+         "value": {
+          "stringValue": "x"
+         }
+        },
+        {
+         "key": "event.sequence",
+         "value": {
+          "intValue": "5"
+         }
+        },
+        {
+         "key": "prompt.id",
+         "value": {
+          "stringValue": "00000000-0000-4000-8000-0000000000cc"
+         }
+        },
+        {
+         "key": "tool_name",
+         "value": {
+          "stringValue": "Bash"
+         }
+        },
+        {
+         "key": "tool_use_id",
+         "value": {
+          "stringValue": "toolu_2"
+         }
+        },
+        {
+         "key": "success",
+         "value": {
+          "stringValue": "false"
+         }
+        },
+        {
+         "key": "duration_ms",
+         "value": {
+          "intValue": "300"
+         }
+        },
+        {
+         "key": "error_type",
+         "value": {
+          "stringValue": "exit_code"
+         }
+        }
+       ]
+      },
+      {
+       "timeUnixNano": "1794590003600000000",
+       "observedTimeUnixNano": "1794590003600000000",
+       "body": {
+        "stringValue": "claude_code.api_error"
+       },
+       "attributes": [
+        {
+         "key": "agent_eval.case",
+         "value": {
+          "stringValue": "fix-typo"
+         }
+        },
+        {
+         "key": "agent_eval.variant",
+         "value": {
+          "stringValue": "sonnet-subagents"
+         }
+        },
+        {
+         "key": "agent_eval.run",
+         "value": {
+          "stringValue": "run-0001"
+         }
+        },
+        {
+         "key": "session.id",
+         "value": {
+          "stringValue": "00000000-0000-4000-8000-000000000001"
+         }
+        },
+        {
+         "key": "user.id",
+         "value": {
+          "stringValue": "0000000000000000000000000000000000000000000000000000000000000000"
+         }
+        },
+        {
+         "key": "user.email",
+         "value": {
+          "stringValue": "someone@example.com"
+         }
+        },
+        {
+         "key": "user.account_uuid",
+         "value": {
+          "stringValue": "00000000-0000-4000-8000-0000000000aa"
+         }
+        },
+        {
+         "key": "user.account_id",
+         "value": {
+          "stringValue": "user_000000000000000000000000"
+         }
+        },
+        {
+         "key": "organization.id",
+         "value": {
+          "stringValue": "00000000-0000-4000-8000-0000000000bb"
+         }
+        },
+        {
+         "key": "terminal.type",
+         "value": {
+          "stringValue": "tmux"
+         }
+        },
+        {
+         "key": "event.name",
+         "value": {
+          "stringValue": "api_error"
+         }
+        },
+        {
+         "key": "event.timestamp",
+         "value": {
+          "stringValue": "x"
+         }
+        },
+        {
+         "key": "event.sequence",
+         "value": {
+          "intValue": "6"
+         }
+        },
+        {
+         "key": "prompt.id",
+         "value": {
+          "stringValue": "00000000-0000-4000-8000-0000000000cc"
+         }
+        },
+        {
+         "key": "model",
+         "value": {
+          "stringValue": "claude-sonnet-5-5"
+         }
+        },
+        {
+         "key": "error",
+         "value": {
+          "stringValue": "overloaded"
+         }
+        },
+        {
+         "key": "status_code",
+         "value": {
+          "intValue": "529"
+         }
+        },
+        {
+         "key": "duration_ms",
+         "value": {
+          "intValue": "200"
+         }
+        },
+        {
+         "key": "attempt",
+         "value": {
+          "intValue": "1"
+         }
+        },
+        {
+         "key": "request_id",
+         "value": {
+          "stringValue": "req_2"
+         }
+        }
+       ]
+      },
+      {
+       "timeUnixNano": "1794590005600000000",
+       "observedTimeUnixNano": "1794590005600000000",
+       "body": {
+        "stringValue": "claude_code.api_request"
+       },
+       "attributes": [
+        {
+         "key": "agent_eval.case",
+         "value": {
+          "stringValue": "fix-typo"
+         }
+        },
+        {
+         "key": "agent_eval.variant",
+         "value": {
+          "stringValue": "sonnet-subagents"
+         }
+        },
+        {
+         "key": "agent_eval.run",
+         "value": {
+          "stringValue": "run-0001"
+         }
+        },
+        {
+         "key": "session.id",
+         "value": {
+          "stringValue": "00000000-0000-4000-8000-000000000001"
+         }
+        },
+        {
+         "key": "user.id",
+         "value": {
+          "stringValue": "0000000000000000000000000000000000000000000000000000000000000000"
+         }
+        },
+        {
+         "key": "user.email",
+         "value": {
+          "stringValue": "someone@example.com"
+         }
+        },
+        {
+         "key": "user.account_uuid",
+         "value": {
+          "stringValue": "00000000-0000-4000-8000-0000000000aa"
+         }
+        },
+        {
+         "key": "user.account_id",
+         "value": {
+          "stringValue": "user_000000000000000000000000"
+         }
+        },
+        {
+         "key": "organization.id",
+         "value": {
+          "stringValue": "00000000-0000-4000-8000-0000000000bb"
+         }
+        },
+        {
+         "key": "terminal.type",
+         "value": {
+          "stringValue": "tmux"
+         }
+        },
+        {
+         "key": "event.name",
+         "value": {
+          "stringValue": "api_request"
+         }
+        },
+        {
+         "key": "event.timestamp",
+         "value": {
+          "stringValue": "x"
+         }
+        },
+        {
+         "key": "event.sequence",
+         "value": {
+          "intValue": "7"
+         }
+        },
+        {
+         "key": "prompt.id",
+         "value": {
+          "stringValue": "00000000-0000-4000-8000-0000000000cc"
+         }
+        },
+        {
+         "key": "model",
+         "value": {
+          "stringValue": "claude-haiku-5-5"
+         }
+        },
+        {
+         "key": "input_tokens",
+         "value": {
+          "intValue": "8"
+         }
+        },
+        {
+         "key": "output_tokens",
+         "value": {
+          "intValue": "50"
+         }
+        },
+        {
+         "key": "cache_read_tokens",
+         "value": {
+          "intValue": "9000"
+         }
+        },
+        {
+         "key": "cache_creation_tokens",
+         "value": {
+          "intValue": "0"
+         }
+        },
+        {
+         "key": "cost_usd",
+         "value": {
+          "doubleValue": 0.01
+         }
+        },
+        {
+         "key": "duration_ms",
+         "value": {
+          "intValue": "1500"
+         }
+        },
+        {
+         "key": "request_id",
+         "value": {
+          "stringValue": "req_3"
+         }
+        },
+        {
+         "key": "query_source",
+         "value": {
+          "stringValue": "Explore"
+         }
+        },
+        {
+         "key": "agent.name",
+         "value": {
+          "stringValue": "Explore"
+         }
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}

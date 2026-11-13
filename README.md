@@ -41,6 +41,9 @@ OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
 OTEL_SERVICE_NAME=my-agent
 ```
 
+Claude Code reports log events rather than spans; it works too, through
+`/v1/logs` — see [Claude Code](docs/instrumenting-your-agents.md#7-claude-code).
+
 That is the whole setup. The collector and the reader share one default
 database under `~/.local/share/agent-eval/`, so `serve` in one terminal and
 `agent-eval` in another agree without a single flag.
@@ -60,7 +63,7 @@ flowchart LR
 
     subgraph Binary["agent-eval — one static binary"]
         direction TB
-        RX(["OTLP/HTTP receiver<br/>:4318 /v1/traces"])
+        RX(["OTLP/HTTP receiver<br/>:4318 /v1/traces, /v1/logs"])
         TR["translate<br/>GenAI conventions to domain"]
         PR["price<br/>embedded LiteLLM table"]
         ST[("SQLite<br/>spans · content · traces")]
@@ -244,10 +247,10 @@ Now the same data, asking about success instead:
 
 ```
 VARIANT                      N         MEAN       INTERVAL
-haiku-4-5                   30        83.3%      ± 14.2 pp
-sonnet-4-5                  30        80.0%      ± 15.2 pp
+haiku-4-5                   30        83.3%     [66.4%, 92.7%]
+sonnet-4-5                  30        80.0%     [62.7%, 90.5%]
 
-sonnet-4-5 − haiku-4-5 = -3.3% ± 20.3 pp   (n=60, df=57.7)
+sonnet-4-5 − haiku-4-5 = -3.3 pp [-23.0 pp, 16.6 pp]   (n=60, Newcombe)
   the interval includes zero: at 95% confidence this is indistinguishable from noise
 ```
 
@@ -260,6 +263,12 @@ has runs.
 
 ### What the arithmetic does, and why
 
+- **Success is a proportion, so it gets proportion intervals.** Each arm uses
+  the Wilson score interval and the difference uses Newcombe's hybrid score
+  interval, not Welch on 0/1 values. The normal approximation collapses to zero
+  width when every run agrees, so 30/30 would read as a certain 100%; Wilson
+  keeps a lower bound of about 88.6%. The bounds are asymmetric near 0% and
+  100%, so they are printed as `[low, high]` rather than `± margin`.
 - **Welch's t-test**, not Student's pooled test. Pooling assumes both arms share
   a variance, and two models routinely differ in how *consistent* they are, not
   just in their average. The price of that assumption is an interval that is too
@@ -284,7 +293,7 @@ quantile would silently narrow every interval the tool prints.
 
 ```bash
 agent-eval                 # TUI
-agent-eval serve           # receive OTLP on :4318
+agent-eval serve           # receive OTLP traces and logs on :4318
 agent-eval traces          # list recent traces
 agent-eval trace <id>      # one trace as a span tree
 agent-eval sessions        # multi-turn sessions

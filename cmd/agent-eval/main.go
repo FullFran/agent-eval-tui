@@ -2,7 +2,7 @@
 //
 // Two subcommands for now:
 //
-//	agent-eval serve            receive OTLP on :4318 and persist
+//	agent-eval serve            receive OTLP traces and logs on :4318 and persist
 //	agent-eval traces           list what has been received
 //	agent-eval trace <id>       print one trace as a span tree
 package main
@@ -78,7 +78,7 @@ func usage() {
 	fmt.Fprintf(os.Stderr, `agent-eval — LLM and agent observability in one binary and one SQLite file
 
   agent-eval                 open the TUI
-  agent-eval serve           receive OTLP on :4318
+  agent-eval serve           receive OTLP traces and logs on :4318
 
   agent-eval traces          list recent traces
   agent-eval trace <id>      print one trace as a span tree
@@ -497,10 +497,7 @@ func compareCase(args []string) error {
 		res.CaseID, res.Metric, res.Level*100)
 	fmt.Printf("%-24s %5s %12s %14s\n", "VARIANT", "N", "MEAN", "INTERVAL")
 	for _, v := range res.Variants {
-		margin := "?"
-		if v.Interval.N >= 2 {
-			margin = "± " + res.Metric.FormatMargin(v.Interval.Margin)
-		}
+		margin := res.Metric.FormatInterval(v.Interval)
 		fmt.Printf("%-24s %5d %12s %14s", truncate(v.Variant, 24), v.Interval.N,
 			res.Metric.Format(v.Interval.Mean), margin)
 		if v.Skipped > 0 {

@@ -203,3 +203,88 @@ func TestEmptySampleIsNaNNotZero(t *testing.T) {
 		t.Error("the variance of nothing must be NaN")
 	}
 }
+
+// Wilson score bounds against published values (Newcombe 1998, Stat Med 17,
+// table I, method 3) and the closed forms at the boundaries.
+func TestWilsonMatchesPublishedValues(t *testing.T) {
+	tests := []struct {
+		name         string
+		k, n         int
+		lower, upper float64
+	}{
+		{"81/263", 81, 263, 0.2553, 0.3662},
+		{"15/148", 15, 148, 0.0624, 0.1605},
+		{"0/20", 0, 20, 0, 0.1611},
+		{"1/29", 1, 29, 0.0061, 0.1718},
+		// All successes: lower bound is n/(n+z²), never 1.
+		{"30/30", 30, 30, 30 / (30 + 1.959964*1.959964), 1},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			i := Wilson(tt.k, tt.n, 0.95)
+			if !near(i.Low(), tt.lower, 0.0005) || !near(i.High(), tt.upper, 0.0005) {
+				t.Errorf("Wilson(%d,%d) = [%.4f, %.4f], want [%.4f, %.4f]",
+					tt.k, tt.n, i.Low(), i.High(), tt.lower, tt.upper)
+			}
+			if !near(i.Mean, float64(tt.k)/float64(tt.n), 1e-12) {
+				t.Errorf("mean = %v, want the observed proportion", i.Mean)
+			}
+		})
+	}
+}
+
+// The regression that motivated Wilson: every run succeeding is not certainty.
+func TestUnanimousSuccessIsNotCertainty(t *testing.T) {
+	i := ProportionInterval(Sample{Values: ones(30)}, 0.95)
+	if i.Low() >= 0.9 || i.High() != 1 {
+		t.Errorf("30/30 gave [%.4f, %.4f], want a lower bound well below 1", i.Low(), i.High())
+	}
+	if i.Symmetric() {
+		t.Error("a Wilson interval at the boundary must not claim to be symmetric")
+	}
+}
+
+// Newcombe's hybrid score interval for a difference of proportions, checked
+// against his worked example (56/70 vs 48/80, method 10: 0.0524 to 0.3339).
+func TestCompareProportionsMatchesNewcombe(t *testing.T) {
+	a := Sample{Values: bernoulli(48, 80)}
+	b := Sample{Values: bernoulli(56, 70)}
+	c := CompareProportions(a, b, 0.95)
+	d := c.Difference
+	if !near(d.Mean, 0.2, 1e-9) || !near(d.Low(), 0.0524, 0.0005) || !near(d.High(), 0.3339, 0.0005) {
+		t.Errorf("difference = %.4f [%.4f, %.4f], want 0.2000 [0.0524, 0.3339]", d.Mean, d.Low(), d.High())
+	}
+	if !c.Significant() {
+		t.Error("an interval excluding zero must be reported as significant")
+	}
+	if c.Method != MethodNewcombe {
+		t.Errorf("method = %q, want %q", c.Method, MethodNewcombe)
+	}
+}
+
+// Both arms unanimous and equal must not read as an exact, certain zero.
+func TestCompareProportionsUnanimousArmsKeepUncertainty(t *testing.T) {
+	c := CompareProportions(Sample{Values: ones(30)}, Sample{Values: ones(30)}, 0.95)
+	if c.Difference.Low() >= 0 || c.Difference.High() <= 0 || c.Significant() {
+		t.Errorf("30/30 vs 30/30 gave [%.4f, %.4f], want an interval around zero",
+			c.Difference.Low(), c.Difference.High())
+	}
+}
+
+// The mean path keeps its documented zero-variance behaviour.
+func TestCompareMeansZeroVarianceUnchanged(t *testing.T) {
+	c := Compare(Sample{Values: []float64{2, 2, 2}}, Sample{Values: []float64{2, 2, 2}}, 0.95)
+	if c.Difference.Margin != 0 || c.Method != MethodWelch {
+		t.Errorf("margin = %v method = %q, want 0 and %q", c.Difference.Margin, c.Method, MethodWelch)
+	}
+}
+
+func ones(n int) []float64 { return bernoulli(n, n) }
+
+func bernoulli(k, n int) []float64 {
+	out := make([]float64, n)
+	for i := 0; i < k; i++ {
+		out[i] = 1
+	}
+	return out
+}
