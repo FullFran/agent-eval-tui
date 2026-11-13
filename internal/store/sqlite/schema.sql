@@ -127,3 +127,18 @@ CREATE INDEX IF NOT EXISTS idx_traces_session ON traces (session_id, start_unix_
 
 CREATE INDEX IF NOT EXISTS idx_traces_start ON traces (start_unix_nano DESC);
 CREATE INDEX IF NOT EXISTS idx_traces_errors ON traces (error_count) WHERE error_count > 0;
+
+-- One row per harness run: a case executed by a variant, and whether its
+-- acceptance command passed. Success is this verdict, not the absence of span
+-- errors, so it is stored apart from the traces the run produced.
+CREATE TABLE IF NOT EXISTS runs (
+    run_id          TEXT PRIMARY KEY,
+    case_id         TEXT NOT NULL,
+    variant         TEXT NOT NULL,
+    agent_exit      INTEGER NOT NULL,
+    accept_exit     INTEGER NOT NULL,
+    accepted        INTEGER NOT NULL,
+    start_unix_nano INTEGER NOT NULL,
+    end_unix_nano   INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS runs_by_case ON runs (case_id, start_unix_nano);
