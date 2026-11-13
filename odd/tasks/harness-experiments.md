@@ -1,7 +1,7 @@
 # harness-experiments
 
 Objective: turn agent-eval-tui into the controlled-experiment bench for coding-agent harnesses (Claude Code + the metaharness profile), complementing the observational usage report in FullFran/metaharness `analysis/usage`.
-Branch: `feat/harness-experiments`. Delivery: ask-on-risk. Test runner: `go test -race ./...` (plus `gofmt -l .`, `go vet ./...`, as in CI).
+Branch: `feat/harness-experiments`. Delivery: chained PRs, stacked-to-main (chosen by the parent: Fran delegated it, L6). Test runner: `go test -race ./...` (plus `gofmt -l .`, `go vet ./...`, as in CI).
 
 ## Specs
 
@@ -35,4 +35,5 @@ Route evidence: no Writer trigger (units are sequential: T3-T5 depend on T2's da
 - Claude Code OTel facts for T2 (docs, 2026-11-13): logs events `claude_code.api_request` (model, cost_usd, duration_ms, input/output/cache_read/cache_creation tokens, request_id, query_source, agent.name, skill.name, mcp_server.name), `tool_result` (tool_name, success "true"/"false", duration_ms, error_type), `api_error`, `subagent_completed`, `compaction`; event attrs `session.id`, `prompt.id`, `event.timestamp`, `agent_id`, `parent_agent_id`; `OTEL_RESOURCE_ATTRIBUTES` custom keys land on every event and the resource. Logs export interval 5 s; flush-on-exit of `claude -p` is unverified, check empirically. `claude -p --output-format json` gives `session_id`, `total_cost_usd` (includes subagents), `usage` (excludes subagents).
 - L5 (2026-11-13): T2 done. Empirical capture (one `claude -p` on Haiku, scratch receiver): Claude Code sends `body=claude_code.<event>` plus attribute `event.name`, no trace/span ids, no `eventName` field; custom `OTEL_RESOURCE_ATTRIBUTES` appear both on the resource and on every record; a headless run flushes all events on exit in one batch; the record carries user.email/account ids, so identity attrs are dropped before storage and the committed fixture is synthetic. Settings-file `env` overrides the shell, so per-run overrides go through `--settings`. Decision: Claude Code's `cost_usd` is used when present (prices 5m vs 1h cache tiers), the LiteLLM table otherwise. Finding for Fran: a bare "ok" on Haiku costs $0.011 because a fresh session writes ~55k tokens to the 1 h cache (harness context ~66k tokens).
 - Open point for T4: the `tokens` metric and TOKENS column count input+output only; for harness runs cache read/creation dominate, so S5 should expose them.
-- Next: T3.
+- L6 (2026-11-13, verbatim): "te dejo libertad. diseña y usa la fabrica". Slice 1 (T1+T2) opened as PR #14. T3-T5 go to gentle-factory as designed issues; blocker: the factory watcher in workbox trabajo-2 only gets `--repo` flags for dotfiles, infra, metaharness and gentle-factory, and touching the box needs Fran's explicit OK; designs also need T1+T2 on `main` first.
+- Next: merge #14 and add FullFran/agent-eval-tui to the watcher (pending Fran), then design T3 for the factory.
