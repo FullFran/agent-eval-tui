@@ -13,6 +13,7 @@ import (
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 
+	logscollectorpb "go.opentelemetry.io/proto/otlp/collector/logs/v1"
 	collectorpb "go.opentelemetry.io/proto/otlp/collector/trace/v1"
 
 	"github.com/FullFran/agent-eval-tui/internal/domain"
@@ -21,6 +22,10 @@ import (
 // TracesPath is the OTLP/HTTP endpoint every SDK expects. An exporter
 // configured with `OTEL_EXPORTER_OTLP_ENDPOINT=http://host:4318` appends it.
 const TracesPath = "/v1/traces"
+
+// LogsPath is the OTLP/HTTP logs endpoint. Claude Code reports its work as log
+// events rather than spans, so this is how a Claude Code run gets in.
+const LogsPath = "/v1/logs"
 
 // maxBodyBytes caps a single export. Content recording means a batch can carry
 // whole conversations, and an unbounded read is a trivial way to exhaust memory
@@ -67,6 +72,10 @@ func (r *Receiver) price(spans []domain.Span) {
 		return
 	}
 	for i := range spans {
+		if spans[i].Priced {
+			// The agent already reported what it cost (Claude Code's cost_usd).
+			continue
+		}
 		model := spans[i].Model()
 		if model == "" || len(spans[i].Usage) == 0 {
 			continue
@@ -82,6 +91,7 @@ func (r *Receiver) price(spans []domain.Span) {
 func (r *Receiver) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST "+TracesPath, r.handleTraces)
+	mux.HandleFunc("POST "+LogsPath, r.handleLogs)
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = io.WriteString(w, "ok\n")
@@ -90,15 +100,32 @@ func (r *Receiver) Handler() http.Handler {
 }
 
 func (r *Receiver) handleTraces(w http.ResponseWriter, req *http.Request) {
+	var export collectorpb.ExportTraceServiceRequest
+	if !r.decode(w, req, &export) {
+		return
+	}
+	r.store(w, req, Translate(export.GetResourceSpans()))
+}
+
+func (r *Receiver) handleLogs(w http.ResponseWriter, req *http.Request) {
+	var export logscollectorpb.ExportLogsServiceRequest
+	if !r.decode(w, req, &export) {
+		return
+	}
+	r.store(w, req, TranslateLogs(export.GetResourceLogs()))
+}
+
+// decode reads and decodes one export into msg, answering the request itself
+// when it cannot.
+func (r *Receiver) decode(w http.ResponseWriter, req *http.Request, msg proto.Message) bool {
 	body, err := io.ReadAll(http.MaxBytesReader(w, req.Body, maxBodyBytes))
 	if err != nil {
 		r.logger.Warn("otlp: read body", "error", err)
 		http.Error(w, "cannot read body", http.StatusBadRequest)
-		return
+		return false
 	}
 
 	contentType := req.Header.Get("Content-Type")
-	var export collectorpb.ExportTraceServiceRequest
 
 	// Both encodings are in the wild. Go and Python SDKs default to protobuf;
 	// browser and edge SDKs, and anything hand-rolled with curl, send JSON.
@@ -106,13 +133,13 @@ func (r *Receiver) handleTraces(w http.ResponseWriter, req *http.Request) {
 	switch {
 	case strings.HasPrefix(contentType, "application/x-protobuf"),
 		strings.HasPrefix(contentType, "application/protobuf"):
-		err = proto.Unmarshal(body, &export)
+		err = proto.Unmarshal(body, msg)
 	case strings.HasPrefix(contentType, "application/json"):
-		err = unmarshalJSON(body, &export)
+		err = unmarshalJSON(body, msg)
 	default:
 		// No usable Content-Type: try protobuf, then JSON, before giving up.
-		if perr := proto.Unmarshal(body, &export); perr != nil {
-			err = unmarshalJSON(body, &export)
+		if perr := proto.Unmarshal(body, msg); perr != nil {
+			err = unmarshalJSON(body, msg)
 			if err != nil {
 				err = fmt.Errorf("neither protobuf nor json: %w", errors.Join(perr, err))
 			}
@@ -122,10 +149,13 @@ func (r *Receiver) handleTraces(w http.ResponseWriter, req *http.Request) {
 	if err != nil {
 		r.logger.Warn("otlp: decode", "error", err, "content_type", contentType)
 		http.Error(w, "cannot decode payload", http.StatusBadRequest)
-		return
+		return false
 	}
+	return true
+}
 
-	spans := Translate(export.GetResourceSpans())
+// store prices and persists translated spans and answers the exporter.
+func (r *Receiver) store(w http.ResponseWriter, req *http.Request, spans []domain.Span) {
 	if len(spans) == 0 {
 		writeSuccess(w)
 		return
@@ -164,7 +194,7 @@ func writeSuccess(w http.ResponseWriter) {
 // It normalises hex IDs to base64 first: OTLP/JSON specifies hex for trace and
 // span IDs, protojson expects base64 for `bytes` fields, and the mismatch
 // corrupts every ID without raising an error. See normalizeJSONIDs.
-func unmarshalJSON(body []byte, export *collectorpb.ExportTraceServiceRequest) error {
+func unmarshalJSON(body []byte, export proto.Message) error {
 	normalized, err := normalizeJSONIDs(body)
 	if err != nil {
 		return err

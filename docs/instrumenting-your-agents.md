@@ -359,6 +359,49 @@ Two rules the format enforces:
 
 ---
 
+## 7. Claude Code
+
+Claude Code already exports OpenTelemetry, but as **log events**, not spans:
+one `claude_code.api_request` per model request, one `claude_code.tool_result`
+per tool call, with no trace or span ids. agent-eval accepts them on
+`/v1/logs` and rebuilds each run as a trace, so the trace list, sessions, cost
+and `compare` work exactly as for any other agent.
+
+```bash
+CLAUDE_CODE_ENABLE_TELEMETRY=1
+OTEL_LOGS_EXPORTER=otlp
+OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:4318
+OTEL_EXPORTER_OTLP_PROTOCOL=http/json          # http/protobuf works too
+OTEL_RESOURCE_ATTRIBUTES=agent_eval.case=fix-typo,agent_eval.variant=baseline,agent_eval.run=r1
+```
+
+If these already live in the `env` block of your `settings.json`, that block
+wins over the shell. Override it for one run with
+`claude -p ... --settings '{"env":{"OTEL_EXPORTER_OTLP_ENDPOINT":"http://127.0.0.1:4318"}}'`.
+
+What becomes what:
+
+| Event | Span | Notes |
+|---|---|---|
+| `api_request` | LLM call | model, input/output/cache tokens, and **Claude Code's own `cost_usd`**, which prices the 5-minute and 1-hour cache tiers a generic table cannot tell apart |
+| `tool_result` | tool call | error when `success` is `"false"` |
+| `api_error` | error | counted even if a retry later succeeded: the span describes that attempt |
+| anything else | ignored | hook, plugin and MCP registration chatter |
+
+One trace per `agent_eval.run`, or per `session.id` when no run is set. Ids are
+derived from the events, so a retried export lands on the same spans. Account
+identity (`user.email`, `user.id`, `user.account_uuid`, `user.account_id`,
+`organization.id`) is dropped before storage.
+
+A headless `claude -p` flushes its events on exit; no export interval tuning is
+needed for short runs.
+
+Note that `success` for these traces still means "no span errored", and a
+failed `grep` is a failed tool call. Judge a coding run by its acceptance check,
+not by this.
+
+---
+
 ## Check it worked
 
 ```bash

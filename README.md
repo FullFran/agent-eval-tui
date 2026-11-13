@@ -41,6 +41,9 @@ OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
 OTEL_SERVICE_NAME=my-agent
 ```
 
+Claude Code reports log events rather than spans; it works too, through
+`/v1/logs` — see [Claude Code](docs/instrumenting-your-agents.md#7-claude-code).
+
 That is the whole setup. The collector and the reader share one default
 database under `~/.local/share/agent-eval/`, so `serve` in one terminal and
 `agent-eval` in another agree without a single flag.
@@ -60,7 +63,7 @@ flowchart LR
 
     subgraph Binary["agent-eval — one static binary"]
         direction TB
-        RX(["OTLP/HTTP receiver<br/>:4318 /v1/traces"])
+        RX(["OTLP/HTTP receiver<br/>:4318 /v1/traces, /v1/logs"])
         TR["translate<br/>GenAI conventions to domain"]
         PR["price<br/>embedded LiteLLM table"]
         ST[("SQLite<br/>spans · content · traces")]
@@ -290,7 +293,7 @@ quantile would silently narrow every interval the tool prints.
 
 ```bash
 agent-eval                 # TUI
-agent-eval serve           # receive OTLP on :4318
+agent-eval serve           # receive OTLP traces and logs on :4318
 agent-eval traces          # list recent traces
 agent-eval trace <id>      # one trace as a span tree
 agent-eval sessions        # multi-turn sessions
