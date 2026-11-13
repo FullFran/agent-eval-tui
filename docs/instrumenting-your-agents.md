@@ -435,7 +435,7 @@ flowchart LR
         B3["…30"]
     end
 
-    A --> C{{"Welch's t<br/>difference ± interval"}}
+    A --> C{{"Welch's t (means) or<br/>Wilson/Newcombe (success)<br/>difference with interval"}}
     B --> C
     C --> V["real, or<br/>indistinguishable from noise"]
 

@@ -497,10 +497,7 @@ func compareCase(args []string) error {
 		res.CaseID, res.Metric, res.Level*100)
 	fmt.Printf("%-24s %5s %12s %14s\n", "VARIANT", "N", "MEAN", "INTERVAL")
 	for _, v := range res.Variants {
-		margin := "?"
-		if v.Interval.N >= 2 {
-			margin = "± " + res.Metric.FormatMargin(v.Interval.Margin)
-		}
+		margin := res.Metric.FormatInterval(v.Interval)
 		fmt.Printf("%-24s %5d %12s %14s", truncate(v.Variant, 24), v.Interval.N,
 			res.Metric.Format(v.Interval.Mean), margin)
 		if v.Skipped > 0 {

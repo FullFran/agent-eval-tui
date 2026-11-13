@@ -199,3 +199,39 @@ func TestSuccessMarginIsInPercentagePoints(t *testing.T) {
 		t.Errorf("margin = %q, want percentage points", got)
 	}
 }
+
+// Success is a proportion: unanimous runs get a Wilson interval, not ± 0.
+func TestSuccessUsesProportionIntervals(t *testing.T) {
+	var all []sqlite.Observation
+	for i := 0; i < 30; i++ {
+		all = append(all, obs("a", 1, 0.01, true, 1))
+		s := 1.0
+		if i < 6 {
+			s = 0
+		}
+		all = append(all, obs("b", 1, 0.01, true, s))
+	}
+
+	res := experiment.Analyse("case", experiment.MetricSuccess, 0.95, all)
+
+	a := res.Variants[0].Interval
+	if a.High() != 1 || a.Low() >= 0.9 {
+		t.Errorf("30/30 interval = [%.4f, %.4f], want Wilson bounds", a.Low(), a.High())
+	}
+	if res.Comparison == nil || res.Comparison.Method != "newcombe" {
+		t.Fatalf("comparison = %+v, want a newcombe comparison", res.Comparison)
+	}
+	v := res.Verdict()
+	if strings.Contains(v, "± 0.0 pp") || !strings.Contains(v, "[") {
+		t.Errorf("verdict should show explicit bounds, got:\n%s", v)
+	}
+}
+
+// Latency verdicts keep the existing ± form.
+func TestLatencyVerdictKeepsPlusMinus(t *testing.T) {
+	all := append(runs("a", []float64{1, 1.1, 0.9, 1.05}), runs("b", []float64{2, 2.1, 1.9, 2.05})...)
+	v := experiment.Analyse("case", experiment.MetricLatency, 0.95, all).Verdict()
+	if !strings.Contains(v, "±") || !strings.Contains(v, "df=") {
+		t.Errorf("latency verdict changed shape:\n%s", v)
+	}
+}
